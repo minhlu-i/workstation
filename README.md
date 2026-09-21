@@ -14,3 +14,13 @@ ownership, backups, verification and customization. Read the
 
 There is no workstation-wide orchestrator yet. Future modules get separate
 `setup-*` entrypoints; platform differences stay inside their owning module.
+
+## GitHub maintenance
+
+Manage GitHub CLI as a personal mise tool, separately from the Bash module:
+
+```bash
+mise use --global gh@latest
+mise exec gh -- gh auth login --hostname github.com --git-protocol https --web
+mise exec gh -- gh repo view
+```
