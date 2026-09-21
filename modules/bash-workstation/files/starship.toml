@@ -1,0 +1,180 @@
+# Managed by setup-bash-workstation. Runtime detection belongs to Starship.
+add_newline = false
+format = '$directory$git_branch$git_status$bun$c$cpp$cmake$cobol$daml$dart$deno$dotnet$elixir$elm$erlang$fennel$fortran$gleam$golang$gradle$haskell$haxe$java$julia$kotlin$lua$maven$meson$mojo$nim$nodejs$ocaml$odin$opa$perl$php$purescript$python$quarto$raku$rlang$red$ruby$rust$scala$solidity$swift$typst$vlang$xmake$zig$crystal$line_break$character'
+
+[directory]
+format = '\[[$path]($style)\] '
+truncation_length = 0
+truncate_to_repo = false
+home_symbol = '~'
+
+[git_branch]
+format = '\[[git:$branch]($style)\] '
+
+[git_status]
+format = '(\[[$all_status$ahead_behind]($style)\] )'
+conflicted = 'conflict:${count} '
+ahead = 'ahead:${count} '
+behind = 'behind:${count} '
+diverged = 'ahead:${ahead_count} behind:${behind_count} '
+untracked = '?:${count}'
+stashed = 'stash:${count} '
+modified = '!:${count} '
+staged = '+:${count} '
+renamed = 'rename:${count} '
+deleted = '-:${count} '
+
+[character]
+success_symbol = '[>](bold green)'
+error_symbol = '[>](bold red)'
+vimcmd_symbol = '[>](bold green)'
+
+[cmd_duration]
+disabled = true
+
+[bun]
+format = '\[[bun:$version]($style)\] '
+
+[c]
+format = '\[[c:$version]($style)\] '
+
+[cpp]
+format = '\[[cpp:$version]($style)\] '
+
+[cmake]
+format = '\[[cmake:$version]($style)\] '
+
+[cobol]
+format = '\[[cobol:$version]($style)\] '
+
+[daml]
+format = '\[[daml:$version]($style)\] '
+
+[dart]
+format = '\[[dart:$version]($style)\] '
+
+[deno]
+format = '\[[deno:$version]($style)\] '
+
+[dotnet]
+format = '\[[dotnet:$version]($style)\] '
+
+[elixir]
+format = '\[[elixir:$version]($style)\] '
+
+[elm]
+format = '\[[elm:$version]($style)\] '
+
+[erlang]
+format = '\[[erlang:$version]($style)\] '
+
+[fennel]
+format = '\[[fennel:$version]($style)\] '
+
+[fortran]
+format = '\[[fortran:$version]($style)\] '
+
+[gleam]
+format = '\[[gleam:$version]($style)\] '
+
+[golang]
+format = '\[[go:$version]($style)\] '
+
+[gradle]
+format = '\[[gradle:$version]($style)\] '
+
+[haskell]
+format = '\[[haskell:$version]($style)\] '
+
+[haxe]
+format = '\[[haxe:$version]($style)\] '
+
+[java]
+format = '\[[java:$version]($style)\] '
+
+[julia]
+format = '\[[julia:$version]($style)\] '
+
+[kotlin]
+format = '\[[kotlin:$version]($style)\] '
+
+[lua]
+format = '\[[lua:$version]($style)\] '
+
+[maven]
+format = '\[[maven:$version]($style)\] '
+
+[meson]
+format = '\[[meson:$version]($style)\] '
+
+[mojo]
+format = '\[[mojo:$version]($style)\] '
+
+[nim]
+format = '\[[nim:$version]($style)\] '
+
+[nodejs]
+format = '\[[node:$version]($style)\] '
+
+[ocaml]
+format = '\[[ocaml:$version]($style)\] '
+
+[odin]
+format = '\[[odin:$version]($style)\] '
+
+[opa]
+format = '\[[opa:$version]($style)\] '
+
+[perl]
+format = '\[[perl:$version]($style)\] '
+
+[php]
+format = '\[[php:$version]($style)\] '
+
+[purescript]
+format = '\[[purescript:$version]($style)\] '
+
+[python]
+format = '\[[python:$version]($style)\] '
+
+[quarto]
+format = '\[[quarto:$version]($style)\] '
+
+[raku]
+format = '\[[raku:$version]($style)\] '
+
+[rlang]
+format = '\[[r:$version]($style)\] '
+
+[red]
+format = '\[[red:$version]($style)\] '
+
+[ruby]
+format = '\[[ruby:$version]($style)\] '
+
+[rust]
+format = '\[[rust:$version]($style)\] '
+
+[scala]
+format = '\[[scala:$version]($style)\] '
+
+[solidity]
+format = '\[[solidity:$version]($style)\] '
+
+[swift]
+format = '\[[swift:$version]($style)\] '
+
+[typst]
+format = '\[[typst:$version]($style)\] '
+
+[vlang]
+format = '\[[v:$version]($style)\] '
+
+[xmake]
+format = '\[[xmake:$version]($style)\] '
+
+[zig]
+format = '\[[zig:$version]($style)\] '
+
+[crystal]
+format = '\[[crystal:$version]($style)\] '

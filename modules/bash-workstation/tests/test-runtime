@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export TERM=xterm-256color
+if ! python3 --version >/dev/null 2>&1 && ! python --version >/dev/null 2>&1; then
+    printf 'test-runtime requires Python (python3 or python) on PATH for prompt detection.\n' >&2
+    exit 1
+fi
+module=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+# Reuse real installations; this test performs no downloads or package installation.
+export MISE_DATA_DIR=${MISE_DATA_DIR:-$HOME/.local/share/mise}
+starship=$(mise which starship)
+workspace_test_home=$(mktemp -d)
+trap 'rm -rf -- "$workspace_test_home"' EXIT
+export HOME=$workspace_test_home XDG_CONFIG_HOME=$workspace_test_home/.config
+export MISE_CACHE_DIR=$workspace_test_home/.cache/mise
+unset MISE_CONFIG_DIR MISE_GLOBAL_CONFIG_FILE
+bash "$module/install" --configure-only
+bash "$module/verify"
+export MODULE=$module
+bash --noprofile --norc -ic '
+    PROMPT_COMMAND=$'"'"'((first+=1))\n((second+=1))'"'"'
+    source "$HOME/.bashrc"
+    for hook in "${PROMPT_COMMAND[@]}"; do eval "$hook"; done
+    [[ $first == 1 && $second == 1 ]] || exit 1
+    before=$(declare -p PROMPT_COMMAND)
+    source "$HOME/.bashrc"
+    [[ $(declare -p PROMPT_COMMAND) == "$before" ]] || exit 1
+'
+bash --noprofile --norc -c 'source "$HOME/.bashrc"; [[ ! ${__workstation_loaded-} ]]'
+mkdir -p "$HOME/projects/example"
+git -C "$HOME/projects/example" init -q -b codex/test
+printf 'print("hello")\n' > "$HOME/projects/example/main.py"
+cd "$HOME/projects/example"
+prompt=$(STARSHIP_CONFIG="$HOME/.config/starship.toml" env -u STARSHIP_SHELL "$starship" prompt)
+# Strip terminal escapes before asserting visible prompt output.
+plain=$(printf '%s' "$prompt" | sed $'s/\033\\[[0-9;]*m//g')
+[[ $plain == *'[~/projects/example]'* && $plain == *'[git:codex/test]'* && $plain == *'[?:1]'* && $plain == *'[python:v'* ]]
+printf '%s\n' "$plain"
+# A failed user source must be reported even though interactive startup continues.
+for file in "$HOME/.config/bash/local.bash" "$HOME/.config/bash/rc.d/99-personal.bash"; do
+    printf 'source "$HOME/missing-personal-config.bash"\n' > "$file"
+    if bash "$module/verify" > "$HOME/startup-negative.log" 2>&1; then
+        printf 'FAIL verifier accepted failed startup: %s\n' "$file" >&2; exit 1
+    fi
+    grep -F "FAIL startup file returned nonzero: $file" "$HOME/startup-negative.log"
+    printf '# valid personal configuration\n' > "$file"
+done
+bash "$module/verify" > "$HOME/startup-recovered.log" 2>&1
+# Missing fragment must produce a failing verifier.
+mv "$HOME/.config/bash/rc.d/20-history.bash" "$HOME/history.bash"
+if bash "$module/verify" > "$HOME/negative.log" 2>&1; then
+    printf 'FAIL verifier accepted missing history fragment\n' >&2; exit 1
+fi
+printf 'PASS runtime, existing hook execution, re-source, prompt detection and negative verification\n'

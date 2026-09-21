@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+case ${1-} in
+    --verify) shift; exec bash "$root/modules/bash-workstation/verify" "$@" ;;
+    *) exec bash "$root/modules/bash-workstation/install" "$@" ;;
+esac

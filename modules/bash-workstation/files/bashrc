@@ -1,0 +1,25 @@
+# Managed by setup-bash-workstation. Personal changes belong in local.bash.
+[[ $- == *i* ]] || return
+if (( BASH_VERSINFO[0] < 5 || (BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 3) )); then
+    printf 'workstation: Bash 5.3+ is required.\n' >&2
+    return
+fi
+[[ ${__workstation_loaded-} == 1 ]] && return
+__workstation_loaded=1
+__workstation_startup_failures=()
+for __workstation_rc in "$HOME"/.config/bash/rc.d/*.bash; do
+    if [[ -r $__workstation_rc ]]; then
+        source "$__workstation_rc"
+        if (( $? != 0 )); then
+            __workstation_startup_failures+=("$__workstation_rc")
+        fi
+    fi
+done
+unset __workstation_rc
+if [[ -r "$HOME/.config/bash/local.bash" ]]; then
+    source "$HOME/.config/bash/local.bash"
+    if (( $? != 0 )); then
+        __workstation_startup_failures+=("$HOME/.config/bash/local.bash")
+    fi
+fi
+__workstation_dedupe_path

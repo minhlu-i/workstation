@@ -1,0 +1,12 @@
+[tools]
+"bat" = "latest"
+"delta" = "latest"
+"eza" = "latest"
+"fd" = "latest"
+"jq" = "latest"
+"ripgrep" = "latest"
+"starship" = "latest"
+"tealdeer" = "latest"
+"yq" = "latest"
+"zoxide" = "latest"
+"github:HalFrgrd/flyline" = "latest"

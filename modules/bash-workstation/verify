@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+module=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+(( $# == 0 )) || { printf 'Usage: setup-bash-workstation --verify\n' >&2; exit 2; }
+for file in "$HOME/.bashrc" "$HOME/.config/bash/bashrc" "$HOME/.config/bash/local.bash" "$HOME/.config/bash/rc.d/"*.bash; do
+    [[ -f $file ]] || { printf 'Missing: %s\n' "$file" >&2; exit 1; }
+    bash -n "$file"
+done
+# Verify every owned file, not just whichever fragments happen to remain on disk.
+cmp "$module/files/bootstrap.bash" "$HOME/.bashrc"
+cmp "$module/files/bashrc" "$HOME/.config/bash/bashrc"
+cmp "$module/files/starship.toml" "$HOME/.config/starship.toml"
+cmp "$module/files/mise.toml" "$HOME/.config/mise/conf.d/bash-workstation.toml"
+for file in "$module/files/rc.d/"*.bash; do
+    [[ ${file##*/} == 45-user-aliases.bash ]] && continue
+    cmp "$file" "$HOME/.config/bash/rc.d/${file##*/}"
+done
+cd "$HOME"
+export WORKSTATION_VERIFY_MODULE=$module
+bash --noprofile --rcfile "$module/verify-rc.bash" -ic 'source "$WORKSTATION_VERIFY_MODULE/verify-runtime.bash"'
