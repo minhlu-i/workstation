@@ -9,7 +9,7 @@ __workstation_verify() {
         printf 'FAIL Bash 5.3+ required\n' >&2; ((failures+=1))
     fi
     printf 'Bash %s\n' "$BASH_VERSION"
-    for name in mise zoxide starship bat delta eza fd jq rg tldr yq; do
+    for name in mise zoxide starship; do
         if ! command -v "$name"; then printf 'FAIL missing %s\n' "$name" >&2; ((failures+=1)); fi
     done
     if [[ $(type -t flyline) != builtin || ${__workstation_flyline_ready-} != 1 ]]; then printf 'FAIL Flyline builtin\n' >&2; ((failures+=1)); fi
@@ -18,11 +18,11 @@ __workstation_verify() {
         declare -F "$name" >/dev/null || { printf 'FAIL initialization: %s\n' "$name" >&2; ((failures+=1)); }
     done
     if ! declare -F _completion_loader; then printf 'FAIL bash-completion\n' >&2; ((failures+=1)); fi
-    for name in bat delta eza fd jq ripgrep starship tealdeer yq zoxide github:HalFrgrd/flyline; do
+    for name in github:HalFrgrd/flyline; do
         mise where "$name" >/dev/null 2>&1 || { printf 'FAIL mise installation: %s\n' "$name" >&2; ((failures+=1)); }
     done
-    for name in bat delta eza fd jq rg starship tldr yq zoxide; do
-        if executable=$(mise which "$name") && "$executable" --version >/dev/null; then
+    for name in starship zoxide; do
+        if executable=$(command -v "$name") && "$executable" --version >/dev/null; then
             printf 'PASS executable: %s\n' "$name"
         else
             printf 'FAIL executable: %s\n' "$name" >&2; ((failures+=1))

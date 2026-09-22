@@ -1,0 +1,4 @@
+[tools]
+"starship" = "latest"
+"zoxide" = "latest"
+"github:HalFrgrd/flyline" = "latest"

@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
+workspace_test_home=$(mktemp -d)
+trap 'rm -rf -- "$workspace_test_home"' EXIT
+export HOME=$workspace_test_home XDG_CONFIG_HOME=$workspace_test_home/.config
+export MISE_DATA_DIR=$HOME/.local/share/mise MISE_CACHE_DIR=$HOME/.cache/mise
+unset MISE_CONFIG_DIR MISE_GLOBAL_CONFIG_FILE
+mkdir -p "$HOME/bin"
+export PATH="$HOME/bin:$PATH"
+fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
+source "$root/setup-tools/file-operations.bash"
+source "$root/setup-tools/dependencies.bash"
+# Every common CLI has an explicitly supplied external provider, independent of
+# packages installed on the host running this test.
+for command in bat delta eza fd jq rg tldr yq; do
+    printf '#!/bin/sh\nexit 0\n' > "$HOME/bin/$command"
+    chmod +x "$HOME/bin/$command"
+done
+printf '#!/bin/sh\nprintf "yq (https://github.com/mikefarah/yq/) version v4.47.2\\n"\n' > "$HOME/bin/yq"
+for command in brew mise; do
+    cat > "$HOME/bin/$command" <<'BLOCK'
+#!/bin/sh
+printf '%s\n' "${0##*/} $*" >> "$HOME/manager-calls"
+exit 99
+BLOCK
+    chmod +x "$HOME/bin/$command"
+done
+load_tool_environment
+[[ $HOMEBREW_PREFIX == "$HOME" ]]
+[[ ${PATH%%:*} == "$HOME/bin" ]]
+# Similar command names are not sufficient: retain the Mike Farah yq contract.
+external_tool_works yq
+cp "$HOME/bin/yq" "$HOME/working-yq"
+printf '#!/bin/sh\nprintf "yq 3.4.3\\n"\n' > "$HOME/bin/yq"
+if external_tool_works yq; then fail 'Python yq incorrectly accepted'; fi
+configure_mise_tools "$root/setup-tools/files/mise.toml" "$HOME/yq-manifest.toml" yq-manifest.toml --configure-only
+grep -Fxq '"yq" = "latest"' "$HOME/yq-manifest.toml"
+cp "$HOME/working-yq" "$HOME/bin/yq"
+configure_mise_tools "$root/setup-tools/files/mise.toml" "$HOME/manifest.toml" manifest.toml --configure-only
+[[ $(cat "$HOME/manifest.toml") == '[tools]' ]]
+[[ ! -e $HOME/manager-calls ]]
+verify_mise_tools "$root/setup-tools/files/mise.toml" "$HOME/manifest.toml"
+[[ ! -e $HOME/manager-calls ]]
+configure_mise_tools "$root/setup-tools/files/mise.toml" "$HOME/manifest.toml" manifest.toml ''
+[[ ! -e $HOME/manager-calls && ! -d $HOME/.local/state ]]
+# Working apt/system providers must not cause even a brew list query.
+ensure_command bat bat
+[[ ! -e $HOME/manager-calls ]]
+# A missing command routes through brew; an existing broken formula must fail
+# without automatic reinstall/upgrade.
+cat > "$HOME/bin/brew" <<'BREW'
+#!/bin/sh
+printf '%s\n' "brew $*" >> "$HOME/manager-calls"
+case $1 in
+list) [ -e "$HOME/formula-installed" ] ;;
+install)
+    printf '#!/bin/sh\nexit 0\n' > "$HOME/bin/provider-test-command"
+    chmod +x "$HOME/bin/provider-test-command" ;;
+*) exit 99 ;;
+esac
+BREW
+ensure_command provider-test-command provider-test-formula
+grep -Fxq 'brew install provider-test-formula' "$HOME/manager-calls"
+rm "$HOME/bin/provider-test-command"
+touch "$HOME/formula-installed"
+cp "$HOME/manager-calls" "$HOME/calls-before"
+if (ensure_command provider-test-command provider-test-formula) >/dev/null 2>&1; then fail 'Broken installed formula passed'; fi
+[[ $(grep -c '^brew install' "$HOME/manager-calls") == 1 ]]
+# A previously reused external provider going missing is a verification failure.
+printf '#!/bin/sh\nexit 1\n' > "$HOME/bin/bat"
+if verify_mise_tools "$root/setup-tools/files/mise.toml" "$HOME/manifest.toml" >/dev/null 2>&1; then fail 'Missing external tool passed'; fi
+# Missing tools get a declaration offline, never manager execution. A shim must
+# not be executed during configure-only, since it might attempt a download.
+mkdir -p "$MISE_DATA_DIR/shims"
+printf '#!/bin/sh\necho shim >> "$HOME/manager-calls"\nexit 0\n' > "$MISE_DATA_DIR/shims/bat"
+chmod +x "$MISE_DATA_DIR/shims/bat"
+export PATH="$MISE_DATA_DIR/shims:$PATH"
+cp "$HOME/manager-calls" "$HOME/calls-before"
+printf '#!/bin/sh\necho mise-shim >> "$HOME/manager-calls"\nexit 0\n' > "$MISE_DATA_DIR/shims/mise"
+chmod +x "$MISE_DATA_DIR/shims/mise"
+if working_command mise; then fail 'mise shim incorrectly accepted'; fi
+cmp "$HOME/calls-before" "$HOME/manager-calls"
+rm "$MISE_DATA_DIR/shims/mise"
+configure_mise_tools "$root/setup-tools/files/mise.toml" "$HOME/manifest.toml" manifest.toml --configure-only
+grep -Fxq '"bat" = "latest"' "$HOME/manifest.toml"
+cmp "$HOME/calls-before" "$HOME/manager-calls"
+# Read-only mise resolution and missing-tool installation use explicit doubles.
+cat > "$HOME/bin/mise" <<'MISE'
+#!/bin/sh
+printf '%s\n' "mise $*" >> "$HOME/manager-calls"
+case $1 in
+where) [ -e "$HOME/mise-bat-installed" ] ;;
+install) [ "$2" = bat ] && touch "$HOME/mise-bat-installed" ;;
+which) printf '%s/bin/mise-bat\n' "$HOME" ;;
+*) exit 99 ;;
+esac
+MISE
+printf '#!/bin/sh\nexit 0\n' > "$HOME/bin/mise-bat"
+chmod +x "$HOME/bin/mise-bat"
+configure_mise_tools "$root/setup-tools/files/mise.toml" "$HOME/manifest.toml" manifest.toml ''
+grep -Fxq 'mise install bat' "$HOME/manager-calls"
+verify_mise_tools "$root/setup-tools/files/mise.toml" "$HOME/manifest.toml"
+configure_mise_tools "$root/setup-tools/files/mise.toml" "$HOME/manifest.toml" manifest.toml ''
+[[ $(grep -c '^mise install' "$HOME/manager-calls") == 1 ]]
+cp "$HOME/manifest.toml" "$HOME/valid-manifest.toml"
+printf '[tools]\n' >> "$HOME/manifest.toml"
+if verify_mise_tools "$root/setup-tools/files/mise.toml" "$HOME/manifest.toml" >/dev/null 2>&1; then fail 'Duplicate table passed'; fi
+cp "$HOME/valid-manifest.toml" "$HOME/manifest.toml"
+printf '\n[settings]\n' >> "$HOME/manifest.toml"
+if verify_mise_tools "$root/setup-tools/files/mise.toml" "$HOME/manifest.toml" >/dev/null 2>&1; then fail 'Unexpected manifest passed'; fi
+printf 'PASS provider reuse, offline manifests, missing/broken routing, doctor dependencies (test doubles)\n'

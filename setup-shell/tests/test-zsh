@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# Configuration tests use real Zsh with explicit plugin/CLI doubles, not runtime proof.
+set -euo pipefail
+command -v zsh >/dev/null || { printf 'test-zsh requires Zsh.\n' >&2; exit 1; }
+module=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+workspace_test_home=$(mktemp -d)
+trap 'rm -rf -- "$workspace_test_home"' EXIT
+export HOME=$workspace_test_home XDG_CONFIG_HOME=$workspace_test_home/.config
+export ZDOTDIR=$HOME HOMEBREW_PREFIX=$HOME/brew MODULE=$module TERM=xterm-256color
+mkdir -p "$HOME/.config/zsh" "$HOME/bin" "$HOMEBREW_PREFIX/share/zsh-autosuggestions" "$HOMEBREW_PREFIX/share/zsh-syntax-highlighting" "$HOMEBREW_PREFIX/bin"
+cp -R "$module/files/zsh/." "$HOME/.config/zsh/"
+cp "$module/files/zsh/bootstrap.zsh" "$HOME/.zshrc"
+# Prevent access to real mise/tool activation or brew during isolated startup.
+for name in mise starship zoxide; do
+    printf '#!/bin/sh\nexit 0\n' > "$HOME/bin/$name"
+    chmod +x "$HOME/bin/$name"
+done
+# Both providers offer a tool; startup must preserve the existing PATH provider.
+printf '#!/bin/sh\nexit 42\n' > "$HOMEBREW_PREFIX/bin/brew"
+printf '#!/bin/sh\nexit 0\n' > "$HOMEBREW_PREFIX/bin/provider-probe"
+printf '#!/bin/sh\nexit 0\n' > "$HOME/bin/provider-probe"
+chmod +x "$HOMEBREW_PREFIX/bin/brew" "$HOMEBREW_PREFIX/bin/provider-probe" "$HOME/bin/provider-probe"
+printf '_zsh_autosuggest_start() { :; }\n' > "$HOMEBREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh"
+printf '[[ ${personal_loaded-} == 1 ]] || return 1\n_zsh_highlight() { :; }\n' > "$HOMEBREW_PREFIX/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+printf 'personal_loaded=1\nalias mine="printf personal"\n' > "$HOME/.config/zsh/local.zsh"
+export PATH="$HOME/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+zsh -d -f -ic '
+    source "$MODULE/verify-rc.zsh"
+    [[ $__workstation_zsh_loaded == 1 && ${#__workstation_startup_failures} == 0 ]] || exit 1
+    [[ $commands[provider-probe] == "$HOME/bin/provider-probe" ]] || exit 1
+    [[ $HOMEBREW_PREFIX == "$HOME/brew" && $commands[brew] == "$HOME/brew/bin/brew" ]] || exit 1
+    [[ $HISTSIZE == 1000 && $SAVEHIST == 2000 && -o histignoredups && -o histignorespace ]] || exit 1
+    [[ $__workstation_completion_ready == 1 && $__workstation_suggestions_ready == 1 && $__workstation_highlighting_ready == 1 ]] || exit 1
+    [[ $aliases[mine] == "printf personal" ]] || exit 1
+    [[ $PROMPT == $'"'"'[%~]\n> '"'"' ]] || exit 1
+    before=$(typeset -p precmd_functions)
+    source "$HOME/.zshrc"
+    [[ $(typeset -p precmd_functions) == "$before" ]] || exit 1
+    for hook in "${precmd_functions[@]}"; do "$hook"; done
+    [[ $__workstation_verify_first_ran == 1 && $__workstation_verify_second_ran == 1 ]] || exit 1
+    PATH="/usr/bin::/path with spaces:/usr/bin::/bin:"
+    __workstation_dedupe_path
+    [[ $PATH == "/usr/bin::/path with spaces:/bin" ]] || exit 1
+'
+# An already-visible brew also supplies the plugin prefix, without shellenv.
+zsh -d -f -ic '
+    path+=("$HOME/brew/bin")
+    unset HOMEBREW_PREFIX
+    source "$MODULE/files/zsh/rc.d/10-shell.zsh"
+    [[ $HOMEBREW_PREFIX == "$HOME/brew" && $commands[provider-probe] == "$HOME/bin/provider-probe" ]] || exit 1
+'
+# Hint parser tests use explicit history/CLI doubles; real interactive history UX needs a terminal smoke test.
+for name in eza bat fd tldr rg; do
+    printf '#!/bin/sh\nexit 0\n' > "$HOME/bin/$name"
+    chmod +x "$HOME/bin/$name"
+done
+zsh -d -ic '
+    fc() { print -r -- "$test_history_line"; }
+    assert_hint() {
+        local line=$1 expected=$2 output
+        test_history_line=$line
+        __workstation_hint 2> "$HOME/hint-output"
+        output=$(cat "$HOME/hint-output")
+        [[ $output == "$expected" ]] || { print -u2 -- "Hint mismatch: $line => $output"; exit 1; }
+    }
+    assert_hint "ls -la" "hint: try eza as an alternative to ls; see eza --help for its syntax."
+    assert_hint "ls /tmp" ""
+    assert_hint "grep pattern file" ""
+    assert_hint "grep -e -r file" ""
+    assert_hint "grep -- -r file" ""
+    assert_hint "grep -eR file" ""
+    assert_hint "grep -nR pattern ." "hint: try rg as an alternative to grep; see rg --help for its syntax."
+    assert_hint "grep -r other ." ""
+    assert_hint "cat file" "hint: try bat as an alternative to cat; see bat --help for its syntax."
+    assert_hint "find ." "hint: try fd as an alternative to find; see fd --help for its syntax."
+    assert_hint "man zsh" "hint: try tldr as an alternative to man; see tldr --help for its syntax."
+    false
+    __workstation_hint 2>/dev/null
+    [[ $? == 1 ]] || exit 1
+    for name in ls cat find man grep; do
+        (( ! $+functions[$name] && ! $+aliases[$name] )) || exit 1
+    done
+'
+# Genuine startup reads .zshrc, including an existing user fragment.
+printf 'personal_fragment=1\n' > "$HOME/.config/zsh/rc.d/99-personal.zsh"
+zsh -d -ic '[[ $__workstation_zsh_loaded == 1 && $personal_fragment == 1 ]]'
+zsh -d -f -c 'source "$HOME/.zshrc"; [[ ! ${__workstation_zsh_loaded-} ]]'
+# A failed personal source is recorded even though later startup continues.
+printf 'source "$HOME/nonexistent.zsh"\n' > "$HOME/.config/zsh/rc.d/99-personal.zsh"
+zsh -d -ic '[[ "${__workstation_startup_failures[*]}" == *99-personal.zsh* ]]' 2>/dev/null
+# Empty CLI doubles must not satisfy the actual runtime verifier.
+if zsh -d -f -ic 'source "$MODULE/verify-rc.zsh"; source "$MODULE/verify-runtime.zsh"' > "$HOME/negative.log" 2>&1; then
+    printf 'FAIL verifier accepted missing tool initialization\n' >&2; exit 1
+fi
+grep -q 'FAIL initialization: prompt_starship_precmd' "$HOME/negative.log"
+printf 'PASS isolated Zsh configuration, real startup, native completion/history, hooks, PATH and failure detection (plugin/CLI doubles; not real dependency runtime)\n'

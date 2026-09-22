@@ -6,8 +6,7 @@ if ! declare -F _completion_loader >/dev/null; then
         /usr/local/etc/profile.d/bash_completion.sh \
         /home/linuxbrew/.linuxbrew/etc/profile.d/bash_completion.sh; do
         if [[ -r $__workstation_completion ]]; then
-            source "$__workstation_completion"
-            break
+            if source "$__workstation_completion" && declare -F _completion_loader >/dev/null; then break; fi
         fi
     done
     unset __workstation_completion

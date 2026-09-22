@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
+workspace_test_dir=$(mktemp -d)
+trap 'rm -rf -- "$workspace_test_dir"' EXIT
+fixture="$workspace_test_dir/repo with spaces"
+mkdir -p "$fixture/setup-shell" "$fixture/setup-tools" "$workspace_test_dir/bin"
+cp "$root/setup-shell/"{install.sh,options.bash,manifest.bash} "$fixture/setup-shell/"
+cp -R "$root/setup-shell/files" "$fixture/setup-shell/"
+cp "$root/setup-tools/file-operations.bash" "$fixture/setup-tools/"
+# Exercise the real installer with real Bash syntax/config writes. Only provider
+# discovery, package effects, completion availability and verifiers are doubles.
+ln -s "$BASH" "$workspace_test_dir/bin/bash"
+export PATH="$workspace_test_dir/bin:/usr/bin:/bin"
+unset BASH_ENV ENV MISE_CONFIG_DIR MISE_GLOBAL_CONFIG_FILE ZDOTDIR
+cat > "$fixture/setup-tools/dependencies.bash" <<'DEPENDENCIES'
+load_tool_environment() {
+    export BREW="$HOME/bin/brew" HOMEBREW_PREFIX="$HOME/brew"
+}
+configure_mise_tools() { write_owned "$1" "$2" "$3"; }
+DEPENDENCIES
+cat > "$workspace_test_dir/bin/uname" <<'UNAME'
+#!/bin/sh
+printf 'Linux\n'
+UNAME
+chmod +x "$workspace_test_dir/bin/uname"
+for domain in setup-shell setup-tools; do
+    cat > "$fixture/$domain/verify.sh" <<'VERIFY'
+#!/usr/bin/env bash
+printf '%s\n' "$0" >> "$HOME/verifier-calls"
+VERIFY
+done
+cat > "$fixture/setup-shell/files/bash/rc.d/50-completion.bash" <<'COMPLETION'
+printf 'probe\n' >> "$HOME/completion-probes"
+if [[ -f $HOME/completion-available ]]; then
+    _completion_loader() { :; }
+fi
+COMPLETION
+new_case() {
+    export HOME="$workspace_test_dir/$1" XDG_CONFIG_HOME="$workspace_test_dir/$1/.config"
+    export MISE_DATA_DIR="$HOME/.local/share/mise" MISE_CACHE_DIR="$HOME/.cache/mise"
+    mkdir -p "$HOME/bin"
+    cat > "$HOME/bin/brew" <<'BREW'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$HOME/brew-calls"
+case "$*" in
+    'list --versions bash-completion@2') [[ -f $HOME/formula-installed ]] ;;
+    'install bash-completion@2')
+        [[ -f $HOME/keep-completion-broken ]] || touch "$HOME/completion-available" ;;
+    *) exit 99 ;;
+esac
+BREW
+    chmod +x "$HOME/bin/brew"
+}
+run_install() { bash "$fixture/setup-shell/install.sh" --shell bash > "$HOME/install.log" 2>&1; }
+cd /tmp
+new_case existing
+touch "$HOME/completion-available"
+run_install
+[[ ! -e $HOME/brew-calls ]]
+(( $(wc -l < "$HOME/completion-probes") == 1 ))
+(( $(wc -l < "$HOME/verifier-calls") == 2 ))
+[[ -f $HOME/.bashrc ]]
+new_case missing
+run_install
+[[ $(cat "$HOME/brew-calls") == $'list --versions bash-completion@2\ninstall bash-completion@2' ]]
+(( $(wc -l < "$HOME/completion-probes") == 2 ))
+[[ -f $HOME/.bashrc ]]
+new_case unusable
+touch "$HOME/keep-completion-broken"
+if run_install; then printf 'FAIL unusable completion accepted\n' >&2; exit 1; fi
+grep -q 'bash-completion failed to load' "$HOME/install.log"
+[[ $(grep -c '^install ' "$HOME/brew-calls") == 1 ]]
+(( $(wc -l < "$HOME/completion-probes") == 2 ))
+[[ ! -e $HOME/.bashrc ]]
+new_case broken-installed
+touch "$HOME/formula-installed"
+if run_install; then printf 'FAIL broken installed completion accepted\n' >&2; exit 1; fi
+[[ $(cat "$HOME/brew-calls") == 'list --versions bash-completion@2' ]]
+grep -q 'Installed brew completion cannot load' "$HOME/install.log"
+[[ ! -e $HOME/.bashrc ]]
+printf 'PASS existing Bash/completion reuse, missing completion install/recheck, broken dependency rejection, cwd/spaces (installer doubles)\n'

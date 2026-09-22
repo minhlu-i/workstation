@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
+workspace_test_dir=$(mktemp -d)
+trap 'rm -rf -- "$workspace_test_dir"' EXIT
+# Only orchestration is under test here; child scripts are explicit test doubles.
+fixture="$workspace_test_dir/repo with spaces"
+mkdir -p "$fixture"/{setup-tools,setup-shell,doctor} "$workspace_test_dir/home"
+export HOME=$workspace_test_dir/home CALLS=$workspace_test_dir/calls
+cp "$root/setup.sh" "$root/setup-bash-workstation" "$fixture/"
+cp "$root/doctor/check.sh" "$fixture/doctor/"
+for domain in setup-tools setup-shell; do
+    for step in install verify; do
+        cat > "$fixture/$domain/$step.sh" <<'DOUBLE'
+#!/usr/bin/env bash
+id="$(basename "$(dirname "$0")")/$(basename "$0")"
+printf '%s %s\n' "$id" "$*" >> "$CALLS"
+[[ ${FAIL_STEP-} != "$id" ]] || exit 7
+exit 0
+DOUBLE
+    done
+done
+cd /tmp
+"$fixture/setup.sh" > "$workspace_test_dir/log"
+expected=$'setup-tools/install.sh \nsetup-shell/install.sh \nsetup-tools/verify.sh \nsetup-shell/verify.sh '
+[[ $(cat "$CALLS") == "$expected" ]]
+grep -q 'Full workstation readiness is not assessed' "$workspace_test_dir/log"
+: > "$CALLS"
+"$fixture/setup-bash-workstation" > /dev/null
+legacy_expected=$'setup-tools/install.sh \nsetup-shell/install.sh --shell bash\nsetup-tools/verify.sh \nsetup-shell/verify.sh --shell bash'
+[[ $(cat "$CALLS") == "$legacy_expected" ]]
+for step in setup-tools/install.sh setup-shell/install.sh; do
+    : > "$CALLS"
+    status=0
+    FAIL_STEP=$step "$fixture/setup.sh" > "$workspace_test_dir/log" 2>&1 || status=$?
+    [[ $status == 7 ]]
+    grep -q "FAIL installation step: ${step%/*}" "$workspace_test_dir/log"
+    ! grep -q 'verify.sh' "$CALLS"
+    if [[ $step == setup-tools/install.sh ]]; then ! grep -q setup-shell "$CALLS"; fi
+done
+for step in setup-tools/verify.sh setup-shell/verify.sh; do
+    : > "$CALLS"
+    status=0
+    FAIL_STEP=$step "$fixture/doctor/check.sh" > "$workspace_test_dir/log" 2>&1 || status=$?
+    [[ $status == 1 ]]
+    (( $(wc -l < "$CALLS") == 2 ))
+    grep -q PLANNED "$workspace_test_dir/log"
+done
+printf 'PASS dispatch order, cwd/spaces, fail-fast status and doctor aggregation (test doubles)\n'

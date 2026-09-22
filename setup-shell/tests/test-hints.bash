@@ -1,17 +1,17 @@
 set -e
 set -o history
 HISTFILE=/dev/null
-# Real mise-managed replacement executables, supplied by test-module.
+# Real mise-managed replacement executables, supplied by test-runtime.
 PATH="$HOME/bin:/usr/bin:/bin"
 PROMPT_COMMAND=$'printf ""\n:'
 original=$PROMPT_COMMAND
 history -s 'ls previous-session'
 
-source "$MODULE/files/rc.d/90-modern-cli-hints.bash"
+source "$MODULE/files/bash/rc.d/90-modern-cli-hints.bash"
 __workstation_hint 2> "$HOME/first-prompt-output"
 [[ ! -s "$HOME/first-prompt-output" ]]
 [[ ${PROMPT_COMMAND[0]} == "$original" && ${PROMPT_COMMAND[1]} == __workstation_hint ]]
-source "$MODULE/files/rc.d/90-modern-cli-hints.bash"
+source "$MODULE/files/bash/rc.d/90-modern-cli-hints.bash"
 [[ ${#PROMPT_COMMAND[@]} == 2 ]]
 assert_hint() {
     local command=$1 expected=$2 output
@@ -48,5 +48,5 @@ for command in ls cat find man grep; do
     [[ $(type -t "$command") != function && $(type -t "$command") != alias ]]
 done
 PROMPT_COMMAND=(':' 'printf ""')
-source "$MODULE/files/rc.d/90-modern-cli-hints.bash"
+source "$MODULE/files/bash/rc.d/90-modern-cli-hints.bash"
 [[ ${#PROMPT_COMMAND[@]} == 3 && ${PROMPT_COMMAND[0]} == : && ${PROMPT_COMMAND[1]} == 'printf ""' ]]

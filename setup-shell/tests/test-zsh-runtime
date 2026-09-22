@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+module=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+source "$module/../setup-tools/dependencies.bash"
+load_tool_environment
+command -v zsh >/dev/null && working_command mise || { printf 'UNRUN: real Zsh runtime needs Zsh, mise, Starship/zoxide and both Zsh plugins installed.\n' >&2; exit 77; }
+export MISE_DATA_DIR=${MISE_DATA_DIR:-$HOME/.local/share/mise}
+workspace_test_home=$(mktemp -d)
+trap 'rm -rf -- "$workspace_test_home"' EXIT
+export HOME=$workspace_test_home XDG_CONFIG_HOME=$workspace_test_home/.config
+export MISE_CACHE_DIR=$HOME/.cache/mise TERM=xterm-256color
+unset MISE_CONFIG_DIR MISE_GLOBAL_CONFIG_FILE ZDOTDIR
+bash "$module/install.sh" --configure-only --shell zsh
+bash "$module/verify.sh" --shell zsh
+# Exercise the normal startup path as well as the verifier's seeded hooks.
+zsh -d -ic '[[ ${__workstation_zsh_loaded-} == 1 && ${#__workstation_startup_failures} == 0 ]]'
+zsh -d -c 'source "$HOME/.zshrc"; [[ ! ${__workstation_zsh_loaded-} ]]'
+printf 'PASS real installed Zsh dependency runtime (not clean OS bootstrap)\n'

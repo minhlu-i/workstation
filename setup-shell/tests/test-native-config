@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+set -euo pipefail
+module=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+command -v zsh >/dev/null || { printf 'UNRUN: test-native-config requires Zsh.\n' >&2; exit 77; }
+workspace_test_home=$(mktemp -d)
+trap 'rm -rf -- "$workspace_test_home"' EXIT
+export HOME=$workspace_test_home XDG_CONFIG_HOME=$workspace_test_home/.config
+unset MISE_CONFIG_DIR MISE_GLOBAL_CONFIG_FILE ZDOTDIR
+mkdir -p "$HOME/.config/zsh/rc.d"
+printf '# original zshrc\n' > "$HOME/.zshrc"
+printf '# personal local\n' > "$HOME/.config/zsh/local.zsh"
+printf 'alias ll="ls -l"\n' > "$HOME/.config/zsh/rc.d/45-user-aliases.zsh"
+printf '# do not touch Bash\n' > "$HOME/.bashrc"
+snapshot() { find "$HOME" -type f -exec shasum -a 256 {} + | sort; }
+cd /tmp
+printf 'if then\n' > "$HOME/.config/zsh/rc.d/99-personal.zsh"
+before=$(snapshot)
+if /bin/bash "$module/install.sh" --configure-only --shell zsh >/dev/null 2>&1; then exit 1; fi
+[[ $(snapshot) == "$before" ]]
+printf '# valid personal fragment\n' > "$HOME/.config/zsh/rc.d/99-personal.zsh"
+printf 'ZDOTDIR="$HOME/elsewhere"\n' > "$HOME/.zshenv"
+before=$(snapshot)
+if /bin/bash "$module/install.sh" --configure-only --shell zsh >/dev/null 2>&1; then exit 1; fi
+if /bin/bash "$module/verify.sh" --shell zsh >/dev/null 2>&1; then exit 1; fi
+[[ $(snapshot) == "$before" ]]
+printf 'unsetopt RCS\n' > "$HOME/.zshenv"
+before=$(snapshot)
+if /bin/bash "$module/install.sh" --configure-only --shell zsh >/dev/null 2>&1; then exit 1; fi
+[[ $(snapshot) == "$before" ]]
+printf '# valid personal zshenv\n' > "$HOME/.zshenv"
+/bin/bash "$module/install.sh" --configure-only --shell zsh
+before=$(snapshot)
+/bin/bash "$module/install.sh" --configure-only --shell zsh
+[[ $(snapshot) == "$before" ]]
+[[ $(cat "$HOME/.bashrc") == '# do not touch Bash' ]]
+[[ $(cat "$HOME/.config/zsh/local.zsh") == '# personal local' ]]
+[[ $(cat "$HOME/.config/zsh/rc.d/45-user-aliases.zsh") == 'alias ll="ls -l"' ]]
+backup=$(find "$HOME/.local/state" -name .zshrc)
+[[ $(cat "$backup") == '# original zshrc' ]]
+[[ -f $HOME/.config/zsh/highlighting.zsh ]]
+! grep -q flyline "$HOME/.config/mise/conf.d/setup-shell.toml"
+if [[ $(uname -s) == Darwin ]]; then
+    before=$(snapshot)
+    /bin/bash "$module/install.sh" --configure-only
+    [[ $(snapshot) == "$before" ]]
+fi
+before=$(snapshot)
+if ZDOTDIR="$HOME/elsewhere" /bin/bash "$module/install.sh" --configure-only --shell zsh >/dev/null 2>&1; then exit 1; fi
+[[ $(snapshot) == "$before" ]]
+mv "$HOME/.config/zsh/rc.d/20-history.zsh" "$HOME/history.zsh"
+if /bin/bash "$module/verify.sh" --shell zsh > "$HOME/verify.log" 2>&1; then exit 1; fi
+grep -q '20-history.zsh' "$HOME/verify.log"
+printf 'PASS system-Bash installer, native Zsh selection, backups, customization, rerun and config failures\n'

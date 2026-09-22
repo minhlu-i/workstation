@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
+workspace_test_home=$(mktemp -d)
+trap 'rm -rf -- "$workspace_test_home"' EXIT
+export HOME=$workspace_test_home XDG_CONFIG_HOME=$workspace_test_home/.config
+export MISE_CACHE_DIR=$HOME/.cache/mise MISE_DATA_DIR=$HOME/.local/share/mise
+unset MISE_CONFIG_DIR MISE_GLOBAL_CONFIG_FILE
+mkdir -p "$HOME/bin" "$HOME/.config/mise/conf.d" "$HOME/.config/bash/rc.d"
+# Any accidental installer/downloader execution is a failure, even if ignored.
+for command in mise curl apt-get sudo; do
+    cat > "$HOME/bin/$command" <<'BLOCK'
+#!/usr/bin/env bash
+printf '%s\n' "${0##*/} $*" >> "$HOME/forbidden-calls"
+exit 99
+BLOCK
+    chmod +x "$HOME/bin/$command"
+done
+export PATH="$HOME/bin:$PATH"
+# Model an existing combined manifest from the old layout.
+cat "$root/setup-tools/files/mise.toml" > "$HOME/.config/mise/conf.d/bash-workstation.toml"
+sed '1d' "$root/setup-shell/files/bash/mise.toml" >> "$HOME/.config/mise/conf.d/bash-workstation.toml"
+cp "$HOME/.config/mise/conf.d/bash-workstation.toml" "$HOME/legacy-manifest"
+printf '# unrelated mise config\n' > "$HOME/.config/mise/config.toml"
+printf '# old bashrc\n' > "$HOME/.bashrc"
+printf '# local customization\n' > "$HOME/.config/bash/local.bash"
+printf '# personal fragment\n' > "$HOME/.config/bash/rc.d/99-personal.bash"
+printf 'alias ll="ls -l"\n' > "$HOME/.config/bash/rc.d/45-user-aliases.bash"
+snapshot() { find "$HOME" -type f -exec shasum -a 256 {} + | sort; }
+cd /tmp
+printf 'if then\n' > "$HOME/.config/bash/rc.d/99-personal.bash"
+before=$(snapshot)
+if "$root/setup-bash-workstation" --configure-only >/dev/null 2>&1; then exit 1; fi
+[[ $(snapshot) == "$before" ]]
+# Standalone tools migration must preserve shell declarations even when shell
+# cannot complete (the invalid personal fragment is still present).
+"$root/setup-tools/install.sh" --configure-only
+grep -q '"github:HalFrgrd/flyline" = "latest"' "$HOME/.config/mise/conf.d/setup-shell.toml"
+before=$(snapshot)
+if "$root/setup-shell/install.sh" --configure-only --shell bash >/dev/null 2>&1; then exit 1; fi
+[[ $(snapshot) == "$before" ]]
+printf '# personal fragment\n' > "$HOME/.config/bash/rc.d/99-personal.bash"
+"$root/setup-bash-workstation" --configure-only
+[[ ! -e "$HOME/forbidden-calls" ]]
+grep -q '^\[tools\]$' "$HOME/.config/mise/conf.d/bash-workstation.toml"
+grep -q '"github:HalFrgrd/flyline" = "latest"' "$HOME/.config/mise/conf.d/setup-shell.toml"
+backup=$(find "$HOME/.local/state" -name bash-workstation.toml)
+cmp "$HOME/legacy-manifest" "$backup"
+[[ $(cat "$HOME/.config/mise/config.toml") == '# unrelated mise config' ]]
+[[ $(cat "$HOME/.config/bash/local.bash") == '# local customization' ]]
+[[ $(cat "$HOME/.config/bash/rc.d/99-personal.bash") == '# personal fragment' ]]
+[[ $(cat "$HOME/.config/bash/rc.d/45-user-aliases.bash") == 'alias ll="ls -l"' ]]
+before=$(snapshot)
+"$root/setup-bash-workstation" --configure-only
+"$root/setup-tools/install.sh" --configure-only
+"$root/setup-shell/install.sh" --configure-only --shell bash
+[[ $(snapshot) == "$before" ]]
+for entry in setup.sh setup-bash-workstation setup-tools/install.sh setup-shell/install.sh; do
+    "$root/$entry" --help >/dev/null
+    if "$root/$entry" --unknown >/dev/null 2>&1; then exit 1; fi
+done
+# Doctor must detect actual absent dependencies, then still check shell.
+if "$root/doctor/check.sh" > "$HOME/doctor.log" 2>&1; then exit 1; fi
+grep -q 'FAIL setup-tools' "$HOME/doctor.log"
+grep -q 'FAIL setup-shell' "$HOME/doctor.log"
+grep -q 'PLANNED' "$HOME/doctor.log"
+if grep -Eq '^(apt-get|sudo) |^curl (--proto|-fs|-o|http)|^mise (install|use|upgrade|self-update)' "$HOME/forbidden-calls"; then
+    printf 'FAIL doctor attempted installation\n' >&2; exit 1
+fi
+if "$root/setup-bash-workstation" --verify > "$HOME/legacy-verify.log" 2>&1; then exit 1; fi
+# Missing config is a mandatory failure before invoking shell runtime.
+mv "$HOME/.config/bash/rc.d/20-history.bash" "$HOME/history.bash"
+if "$root/setup-shell/verify.sh" --shell bash > "$HOME/config-negative.log" 2>&1; then exit 1; fi
+grep -q '20-history.bash' "$HOME/config-negative.log"
+if "$root/setup-shell/install.sh" --shell bash > "$HOME/prerequisite.log" 2>&1; then exit 1; fi
+grep -q 'Run: .*setup-tools/install.sh' "$HOME/prerequisite.log"
+printf 'PASS offline configuration, migration, rerun, legacy CLI, missing prerequisites/config\n'

@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
+workspace_test_dir=$(mktemp -d)
+trap 'rm -rf -- "$workspace_test_dir"' EXIT
+export HOME="$workspace_test_dir/home" XDG_CONFIG_HOME="$workspace_test_dir/home/.config"
+mkdir -p "$HOME"
+source "$root/setup-tools/bootstrap.bash"
+fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
+# These function doubles cannot invoke the real sudo, apt, CLT or network tools.
+command() {
+    if [[ ${1-} == -v ]]; then
+        case $2 in cc|make|ps|curl|file|git|sudo) [[ -e $state/command-$2 ]]; return ;; esac
+    fi
+    builtin command "$@"
+}
+dpkg-query() { [[ ! -e $state/package-$3 ]] || printf 'install ok installed'; }
+sudo() {
+    printf 'sudo %s\n' "$*" >> "$state/calls"
+    case "$*" in
+        '-n -v') [[ ! -e $state/no-cache ]] ;;
+        '-v') [[ ! -e $state/deny-prompt ]] ;;
+        'apt-get update') [[ ! -e $state/update-fails ]] ;;
+        'apt-get install '*)
+            [[ ! -e $state/install-fails ]] || return 1
+            [[ ! -e $state/incomplete ]] || return 0
+            for name in cc make ps curl file git; do touch "$state/command-$name"; done
+            touch "$state/package-ca-certificates" ;;
+        *) return 99 ;;
+    esac
+}
+xcode-select() {
+    printf 'xcode-select %s\n' "$*" >> "$state/calls"
+    case $1 in
+        -p) [[ -e $state/clt-ready ]] ;;
+        --install)
+            [[ ! -e $state/clt-cancel ]] || return 1
+            [[ ! -e $state/clt-completes ]] || touch "$state/clt-ready" ;;
+        *) return 99 ;;
+    esac
+}
+uname() { printf 'Darwin\n'; }
+curl() {
+    printf 'download\n' >> "$state/calls"
+    [[ ! -e $state/download-fails ]] || return 1
+    local destination=''
+    while (( $# )); do [[ $1 != -o ]] || destination=$2; shift; done
+    printf 'printf "installer NONINTERACTIVE=%%s\\n" "$NONINTERACTIVE" >> "$state/calls"\n' > "$destination"
+}
+load_tool_environment() { printf 'reload\n' >> "$state/calls"; BREW="$state/fake-brew"; }
+new_case() {
+    export state="$workspace_test_dir/$1"
+    mkdir -p "$state"
+    : > "$state/calls"
+    for name in cc make ps curl file git sudo; do touch "$state/command-$name"; done
+    touch "$state/package-ca-certificates"
+}
+expect_failure() {
+    local pattern=$1; shift
+    if ("$@") > "$state/output" 2>&1; then fail "unexpected success: $*"; fi
+    grep -q "$pattern" "$state/output"
+}
+new_case all-present
+prepare_ubuntu_bootstrap
+[[ ! -s $state/calls ]]
+new_case packages-missing
+rm "$state/command-cc" "$state/command-make" "$state/command-git" "$state/package-ca-certificates"
+prepare_ubuntu_bootstrap > "$state/output"
+[[ $(cat "$state/calls") == $'sudo -n -v\nsudo apt-get update\nsudo apt-get install --no-upgrade -y build-essential git ca-certificates' ]]
+cp "$state/calls" "$state/before"
+prepare_ubuntu_bootstrap
+cmp "$state/before" "$state/calls"
+new_case installed-command-missing
+rm "$state/command-cc"
+touch "$state/package-build-essential"
+expect_failure 'installed but cc is unavailable' prepare_ubuntu_bootstrap
+[[ ! -s $state/calls ]]
+for failure in update install; do
+    new_case "$failure-failure"
+    rm "$state/command-git"
+    touch "$state/$failure-fails"
+    expect_failure 'failed' prepare_ubuntu_bootstrap
+    if [[ $failure == update ]]; then ! grep -q 'apt-get install' "$state/calls"; fi
+done
+new_case incomplete-install
+rm "$state/command-git"
+touch "$state/incomplete"
+expect_failure 'still missing: git' prepare_ubuntu_bootstrap
+new_case sudo-cached
+require_bootstrap_sudo
+[[ $(cat "$state/calls") == 'sudo -n -v' ]]
+new_case sudo-no-terminal
+rm "$state/command-git"
+touch "$state/no-cache"
+expect_failure 'interactive terminal' prepare_ubuntu_bootstrap < /dev/null
+[[ $(cat "$state/calls") == 'sudo -n -v' ]]
+new_case clt-present
+touch "$state/clt-ready"
+prepare_macos_bootstrap
+[[ $(cat "$state/calls") == 'xcode-select -p' ]]
+new_case clt-pending
+expect_failure 'not complete' prepare_macos_bootstrap
+new_case clt-cancelled
+touch "$state/clt-cancel"
+expect_failure 'Could not request' prepare_macos_bootstrap
+new_case clt-completed
+touch "$state/clt-completes"
+prepare_macos_bootstrap > "$state/output"
+[[ $(cat "$state/calls") == $'xcode-select -p\nxcode-select --install\nxcode-select -p' ]]
+new_case brew-install
+touch "$state/clt-ready"
+(bootstrap_homebrew)
+[[ $(cat "$state/calls") == $'xcode-select -p\nsudo -n -v\ndownload\ninstaller NONINTERACTIVE=1\nreload' ]]
+new_case brew-download-fails
+touch "$state/clt-ready" "$state/download-fails"
+expect_failure 'Could not download' bootstrap_homebrew
+! grep -q '^installer\|^reload' "$state/calls"
+new_case brew-sudo-fails
+touch "$state/clt-ready" "$state/no-cache"
+expect_failure 'interactive terminal' bootstrap_homebrew < /dev/null
+[[ $(cat "$state/calls") == $'xcode-select -p\nsudo -n -v' ]]
+# Exercise terminal prompting under an actual PTY, using only a function-double
+# sudo. Python is optional; absence is explicitly reported as an unrun check.
+if builtin command -v python3 >/dev/null; then
+    export BOOTSTRAP_SOURCE="$root/setup-tools/bootstrap.bash" TEST_BASH="$BASH"
+    python3 - <<'PY'
+import os, pty
+script = r'''
+source "$BOOTSTRAP_SOURCE"
+fail() { printf '%s\n' "$*"; exit 17; }
+sudo() { printf 'fake-sudo %s\n' "$*"; return 1; }
+require_bootstrap_sudo
+exit 99
+'''
+pid, fd = pty.fork()
+if pid == 0:
+    os.execv(os.environ['TEST_BASH'], [os.environ['TEST_BASH'], '--noprofile', '--norc', '-c', script])
+chunks = []
+while True:
+    try:
+        data = os.read(fd, 4096)
+    except OSError:
+        break
+    if not data:
+        break
+    chunks.append(data)
+os.close(fd)
+_, status = os.waitpid(pid, 0)
+output = b''.join(chunks)
+assert os.WIFEXITED(status) and os.WEXITSTATUS(status) == 17, output
+assert b'fake-sudo -v' in output and b'authentication failed or was cancelled' in output, output
+print('PASS terminal sudo denial (PTY and sudo double)')
+PY
+else
+    printf 'UNRUN terminal sudo denial: python3 unavailable\n'
+fi
+printf 'PASS Ubuntu package selection/recheck/failures, CLT states, sudo gating and Homebrew dispatch (doubles; no OS installation)\n'

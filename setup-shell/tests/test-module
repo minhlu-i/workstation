@@ -3,39 +3,32 @@ set -euo pipefail
 module=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 workspace_test_home=$(mktemp -d)
 trap 'rm -rf -- "$workspace_test_home"' EXIT
-mkdir -p "$workspace_test_home/bin"
-for tool in eza bat fd tldr rg; do
-    executable=$(mise which "$tool")
-    ln -s "$executable" "$workspace_test_home/bin/$tool"
-done
 export HOME=$workspace_test_home XDG_CONFIG_HOME=$workspace_test_home/.config
 unset MISE_CONFIG_DIR MISE_GLOBAL_CONFIG_FILE
 mkdir -p "$HOME/.config/bash/rc.d"
 printf '# original bashrc\n' > "$HOME/.bashrc"
 printf '# personal local\n' > "$HOME/.config/bash/local.bash"
 printf 'alias ll="ls -l"\n' > "$HOME/.config/bash/rc.d/45-user-aliases.bash"
-snapshot() { find "$HOME" -type f -exec sha256sum {} + | sort; }
+snapshot() { find "$HOME" -type f -exec shasum -a 256 {} + | sort; }
 printf 'if then\n' > "$HOME/.config/bash/rc.d/99-existing.bash"
 before=$(snapshot)
-if bash "$module/install" --configure-only; then
+if bash "$module/install.sh" --configure-only --shell bash; then
     printf 'FAIL installer accepted invalid existing fragment\n' >&2; exit 1
 fi
 [[ $(snapshot) == "$before" ]]
 [[ ! -e "$HOME/.local/state/workstation/bash-workstation/backups" ]]
 printf '# valid personal fragment\n' > "$HOME/.config/bash/rc.d/99-existing.bash"
-bash "$module/install" --configure-only
+bash "$module/install.sh" --configure-only --shell bash
 before=$(snapshot)
-bash "$module/install" --configure-only
+bash "$module/install.sh" --configure-only --shell bash
 [[ $(snapshot) == "$before" ]]
 [[ $(cat "$HOME/.config/bash/local.bash") == '# personal local' ]]
 [[ $(cat "$HOME/.config/bash/rc.d/45-user-aliases.bash") == 'alias ll="ls -l"' ]]
 backup=$(find "$HOME/.local/state" -name .bashrc)
 [[ $(cat "$backup") == '# original bashrc' ]]
 # PATH keeps ordering, empty entries and spaces while removing duplicates.
-source "$module/files/rc.d/10-shell.bash"
+source "$module/files/bash/rc.d/10-shell.bash"
 PATH='/usr/bin::/path with spaces:/usr/bin::/bin:'
 __workstation_dedupe_path
 [[ $PATH == '/usr/bin::/path with spaces:/bin' ]]
-export MODULE=$module
-bash --noprofile --norc -ic 'source "$MODULE/tests/test-hints.bash"'
-printf 'PASS deterministic install, backups, user files, PATH and hints\n'
+printf 'PASS deterministic install, backups, user files and PATH\n'

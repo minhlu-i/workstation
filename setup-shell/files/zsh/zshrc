@@ -1,0 +1,15 @@
+# Managed by setup-shell. Personal changes belong in local.zsh.
+[[ -o interactive ]] || return
+[[ ${__workstation_zsh_loaded-} == 1 ]] && return
+__workstation_zsh_loaded=1
+typeset -ga __workstation_startup_failures=()
+for __workstation_rc in "$HOME"/.config/zsh/rc.d/*.zsh(N); do
+    source "$__workstation_rc" || __workstation_startup_failures+=("$__workstation_rc")
+done
+unset __workstation_rc
+if [[ -r "$HOME/.config/zsh/local.zsh" ]]; then
+    source "$HOME/.config/zsh/local.zsh" || __workstation_startup_failures+=("$HOME/.config/zsh/local.zsh")
+fi
+# Syntax highlighting must see widgets installed by plugins and personal config.
+source "$HOME/.config/zsh/highlighting.zsh" || __workstation_startup_failures+=("$HOME/.config/zsh/highlighting.zsh")
+__workstation_dedupe_path

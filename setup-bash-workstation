@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+(( $# <= 1 )) || { printf 'Expected at most one option.\n' >&2; exit 2; }
 case ${1-} in
-    --verify) shift; exec bash "$root/modules/bash-workstation/verify" "$@" ;;
-    *) exec bash "$root/modules/bash-workstation/install" "$@" ;;
+    '') exec bash "$root/setup.sh" --shell bash ;;
+    --configure-only)
+        # Validate/configure shell first, preserving the legacy syntax preflight.
+        bash "$root/setup-shell/install.sh" --configure-only --shell bash
+        exec bash "$root/setup-tools/install.sh" --configure-only ;;
+    --verify) exec bash "$root/doctor/check.sh" --shell bash ;;
+    --help) printf 'Usage: setup-bash-workstation [--configure-only|--verify|--help]\n' ;;
+    *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
 esac
