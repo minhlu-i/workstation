@@ -1,6 +1,6 @@
 # Module conventions
 
-Domains live directly at root: setup-tools, setup-shell, setup-git, setup-editor,
+Domains live directly at root: setup-tools, setup-shell, setup-git,
 setup-docker and setup-workspace. Implemented domains own install.sh, verify.sh,
 tests/ and files/ when deploying configuration. Planned domains have a README only, never a success-returning
 installer. Platform-specific files are introduced only for real implementation.
@@ -15,8 +15,10 @@ provider. Check actual capability before installing; a working apt/system/brew/m
 tool does not need a second installation just because the preferred manager does
 not own it. Do not uninstall, take over or silently upgrade existing tools.
 
-- setup-tools owns Homebrew bootstrap, mise/base-command checks and common CLI.
-  Only missing additions use brew/mise. Missing Homebrew bootstrap prerequisites
+- setup-tools owns Homebrew bootstrap, mise/base-command checks, common CLI and
+  Zed installation (macOS cask, official Linux installer, skipped on WSL).
+  Zed settings/extensions are restored by the user from their online configuration.
+  Missing CLI additions use brew/mise. Missing Homebrew bootstrap prerequisites
   use apt-get/CLT within setup: sudo owns password entry; never capture credentials.
   Fail clearly on cancelled/noninteractive authentication and incomplete CLT.
 - setup-shell owns Bash/Zsh, their completion/editor plugins, Starship/zoxide,

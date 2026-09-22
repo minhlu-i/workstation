@@ -39,3 +39,15 @@ backups and user files. Its existing backup location remains
 from the printed backup directory; see root [migration recovery](../README.md#configuration-migration-and-recovery)
 when restoring an old combined manifest. Do not uninstall shared tool installations
 as part of configuration recovery.
+
+Zed is installed only when missing: the [Homebrew cask](https://formulae.brew.sh/cask/zed)
+on macOS and the [official installer](https://zed.dev/docs/installation) on native
+Ubuntu. WSL skips both installation and verification; install the Windows editor
+separately. Linux does not use a Homebrew cask or a mise tool declaration.
+Existing working Zed installations are reused; broken/partial installations require
+manual repair. Linux installs to `~/.local/zed.app` with a CLI in `~/.local/bin`.
+Setup does not launch Zed or manage settings/extensions; restore your online
+configuration manually. `--configure-only` does not install or check Zed.
+Doctor checks CLI availability, not graphical startup, GPU support or settings sync.
+
+Run `bash setup-tools/tests/test-zed` for isolated platform/provider fixtures.

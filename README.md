@@ -2,8 +2,8 @@
 
 Goal: a new macOS/Linux/WSL2 machine → workstation setup → ready to code.
 Currently tools, interactive shell, Git configuration and Docker are implemented.
-Editor and workspace setup remain planned. Doctor does not certify a
-complete development workstation.
+Zed installation belongs to tools; workspace setup remains planned.
+Doctor does not certify a complete development workstation.
 
 ```bash
 ./setup.sh                       # tools → native shell → Git → Docker → doctor
@@ -38,6 +38,9 @@ Starship/zoxide/Flyline use **mise**. Manifests retain `latest` for mise-managed
 entries, but omit working external tools to avoid competing installations.
 Project runtimes (Node/Python/Go, etc.) remain in each project's `mise.toml`.
 
+Zed uses the macOS Homebrew cask or its official installer on native Ubuntu;
+WSL skips Zed. Restore editor settings from your online configuration manually.
+
 Apt and Xcode Command Line Tools provide the OS bootstrap layer. Docker is the
 domain-specific exception: Ubuntu/WSL2 uses Docker's official APT repository;
 macOS uses the OrbStack cask and its bundled CLI/plugins. When Homebrew is missing,
@@ -67,10 +70,9 @@ or copy); setup cannot supply Git before you have obtained the checkout.
 
 | Domain | Responsibility / status |
 |---|---|
-| [setup-tools](setup-tools/README.md) | Implemented: Homebrew bootstrap, mise, base commands and common CLI |
+| [setup-tools](setup-tools/README.md) | Implemented: Homebrew bootstrap, mise, base commands, common CLI and Zed |
 | [setup-shell](setup-shell/README.md) | Implemented: native shell, shell plugins, shared Starship/zoxide, modular startup |
 | [setup-git](setup-git/README.md) | Implemented: workspace identities and Bitwarden SSH agent configuration |
-| [setup-editor](setup-editor/README.md) | Planned: editor configuration |
 | [setup-docker](setup-docker/README.md) | Implemented: OrbStack / native Docker Engine, CLI, Compose and Buildx |
 | [setup-workspace](setup-workspace/README.md) | Planned: workspace organization |
 
