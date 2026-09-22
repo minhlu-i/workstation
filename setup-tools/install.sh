@@ -35,5 +35,7 @@ configure_mise_tools "$module/files/mise.toml" "$HOME/.config/mise/conf.d/bash-w
 if [[ $mode == --configure-only ]]; then
     printf 'Tools configuration generated; no packages or tools installed.\n'
 else
+    source "$module/zed.bash"
+    install_zed
     bash "$module/verify.sh"
 fi

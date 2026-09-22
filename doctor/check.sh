@@ -18,7 +18,7 @@ for domain in setup-tools setup-shell setup-git setup-docker; do
         failures=$((failures+1))
     fi
 done
-printf 'PLANNED (not checked): setup-editor setup-workspace\n'
+printf 'PLANNED (not checked): setup-workspace\n'
 if (( failures )); then
     printf 'Implemented-domain checks failed: %s\n' "$failures" >&2
     exit 1

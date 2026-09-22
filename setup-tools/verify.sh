@@ -14,5 +14,7 @@ for command in curl git less xz mise; do
     working_command "$command" || fail "Missing/broken prerequisite: $command; run setup-tools/install.sh."
 done
 verify_mise_tools "$module/files/mise.toml" "$HOME/.config/mise/conf.d/bash-workstation.toml" || fail 'Common CLI dependencies/configuration missing or changed; run setup-tools/install.sh.'
+source "$module/zed.bash"
+verify_zed || :
 (( failures == 0 )) || exit 1
 printf 'PASS setup-tools\n'
