@@ -25,6 +25,7 @@ cd /tmp
 expected=$'setup-tools/install.sh \nsetup-shell/install.sh \nsetup-git/install.sh \nsetup-docker/install.sh \nsetup-tools/verify.sh \nsetup-shell/verify.sh \nsetup-git/verify.sh \nsetup-docker/verify.sh '
 [[ $(cat "$CALLS") == "$expected" ]]
 grep -q 'Full workstation readiness is not assessed' "$workspace_test_dir/log"
+grep -Fxq 'PLANNED (not checked): setup-workspace' "$workspace_test_dir/log"
 : > "$CALLS"
 "$fixture/setup-bash-workstation" > /dev/null
 legacy_expected=$'setup-tools/install.sh \nsetup-shell/install.sh --shell bash\nsetup-git/install.sh \nsetup-docker/install.sh \nsetup-tools/verify.sh \nsetup-shell/verify.sh --shell bash\nsetup-git/verify.sh \nsetup-docker/verify.sh '

@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
+workspace_test_home=$(mktemp -d)
+trap 'rm -rf -- "$workspace_test_home"' EXIT
+export HOME=$workspace_test_home PATH="$workspace_test_home/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+unset WSL_DISTRO_NAME WSL_INTEROP
+mkdir -p "$HOME/bin" "$HOME/.local/bin"
+fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
+source "$root/setup-tools/zed.bash"
+# Test manager decisions against only this fixture's installation, never a host
+# /Applications app or CLI. Exercise the real resolver separately below.
+eval "$(declare -f zed_location | sed '1s/zed_location/real_zed_location/')"
+zed_location() {
+    [[ -x $HOME/.local/bin/zed ]] && "$HOME/.local/bin/zed" --version >/dev/null 2>&1 && printf '%s\n' "$HOME/.local/bin/zed"
+}
+eval "$(declare -f zed_present | sed '1s/zed_present/real_zed_present/')"
+zed_present() {
+    if [[ $test_os == Darwin ]]; then
+        [[ -e $HOME/Applications/Zed.app ]]
+    else
+        real_zed_present
+    fi
+}
+uname() { case $1 in -s) printf '%s\n' "$test_os" ;; -r) printf '%s\n' "$test_kernel" ;; *) return 99 ;; esac; }
+export BREW=$HOME/bin/brew
+cat > "$BREW" <<'BREW'
+#!/bin/sh
+printf 'brew %s\n' "$*" >> "$HOME/calls"
+case "$*" in
+'list --cask zed') test -e "$HOME/cask-installed" ;;
+'install --cask zed')
+    test ! -e "$HOME/brew-failure" || exit 1
+    test "$HOMEBREW_NO_AUTO_UPDATE" = 1 && test "$HOMEBREW_NO_INSTALL_UPGRADE" = 1 || exit 99
+    printf '#!/bin/sh\nexit 0\n' > "$HOME/.local/bin/zed"
+    chmod +x "$HOME/.local/bin/zed" ;;
+*) exit 99 ;;
+esac
+BREW
+cat > "$HOME/bin/curl" <<'CURL'
+#!/bin/sh
+printf 'curl %s\n' "$*" >> "$HOME/calls"
+test "$1" = --proto && test "$2" = '=https' && test "$3" = --tlsv1.2 && test "$4" = -fsSL && test "$5" = https://zed.dev/install.sh && test "$6" = -o || exit 99
+printf '%s\n' "$7" > "$HOME/installer-path"
+test ! -e "$HOME/download-failure" || exit 22
+cat > "$7" <<'INSTALLER'
+printf 'installer\n' >> "$HOME/calls"
+test "$ZED_CHANNEL" = stable && test "$ZED_VERSION" = latest && test -z "${ZED_BUNDLE_PATH-}" || exit 99
+test ! -e "$HOME/installer-failure" || exit 1
+printf '#!/bin/sh\nexit 0\n' > "$HOME/.local/bin/zed"
+chmod +x "$HOME/.local/bin/zed"
+INSTALLER
+CURL
+chmod +x "$BREW" "$HOME/bin/curl"
+expect_failure() { if ("$@") > "$HOME/error" 2>&1; then fail "Unexpected success: $*"; fi; }
+reset_fixture() {
+    rm -f "$HOME/.local/bin/zed" "$HOME/calls" "$HOME/cask-installed" "$HOME/brew-failure" "$HOME/download-failure" "$HOME/installer-failure" "$HOME/installer-path"
+    test_os=Linux test_kernel=6.8.0
+    unset WSL_DISTRO_NAME WSL_INTEROP
+}
+reset_fixture
+# Either environment marker and the kernel fallback skip both operations.
+for marker in WSL_DISTRO_NAME WSL_INTEROP kernel; do
+    case $marker in
+        kernel) test_kernel=6.6.87.2-microsoft-standard-WSL2 ;;
+        *) export "$marker=fixture" ;;
+    esac
+    install_zed | grep -q '^SKIP Zed:'
+    verify_zed | grep -q '^SKIP Zed:'
+    [[ ! -e $HOME/calls ]]
+    reset_fixture
+done
+# macOS uses a cask, verifies installation, and never installs twice.
+test_os=Darwin
+install_zed
+verify_zed
+grep -Fxq 'brew install --cask zed' "$HOME/calls"
+cp "$HOME/calls" "$HOME/before"
+install_zed
+cmp "$HOME/before" "$HOME/calls"
+reset_fixture
+test_os=Darwin
+touch "$HOME/brew-failure"
+expect_failure install_zed
+grep -q 'cask installation failed' "$HOME/error"
+reset_fixture
+test_os=Darwin
+touch "$HOME/cask-installed"
+expect_failure install_zed
+! grep -q '^brew install' "$HOME/calls"
+reset_fixture
+test_os=Darwin
+mkdir -p "$HOME/Applications/Zed.app"
+printf 'keep\n' > "$HOME/Applications/Zed.app/marker"
+expect_failure install_zed
+[[ $(cat "$HOME/Applications/Zed.app/marker") == keep && ! -e $HOME/calls ]]
+rm -rf "$HOME/Applications"
+reset_fixture
+# Linux official installer receives stable defaults and a sanitized bundle path.
+export ZED_CHANNEL=preview ZED_VERSION=old ZED_BUNDLE_PATH="$HOME/unrelated"
+install_zed
+verify_zed
+grep -Fxq installer "$HOME/calls"
+[[ ! -e $(cat "$HOME/installer-path") ]]
+! grep -q '^brew ' "$HOME/calls"
+cp "$HOME/calls" "$HOME/before"
+install_zed
+cmp "$HOME/before" "$HOME/calls"
+# The actual resolver prefers a working CLI in the isolated PATH.
+ln -s "$HOME/.local/bin/zed" "$HOME/bin/zed"
+[[ $(real_zed_location) == "$HOME/bin/zed" ]]
+rm "$HOME/bin/zed"
+reset_fixture
+for partial in directory broken-link broken-cli launcher; do
+    case $partial in
+        launcher) mkdir -p "$HOME/.local/share/applications"; printf 'keep\n' > "$HOME/.local/share/applications/dev.zed.Zed.desktop" ;;
+        directory) mkdir -p "$HOME/.local/zed.app"; printf 'keep\n' > "$HOME/.local/zed.app/marker" ;;
+        broken-link) ln -s missing "$HOME/.local/bin/zed" ;;
+        broken-cli) printf '#!/bin/sh\nexit 1\n' > "$HOME/.local/bin/zed"; chmod +x "$HOME/.local/bin/zed" ;;
+    esac
+    expect_failure install_zed
+    expect_failure verify_zed
+    [[ ! -e $HOME/calls ]]
+    case $partial in
+        launcher) [[ $(cat "$HOME/.local/share/applications/dev.zed.Zed.desktop") == keep ]]; rm "$HOME/.local/share/applications/dev.zed.Zed.desktop" ;;
+        directory) [[ $(cat "$HOME/.local/zed.app/marker") == keep ]]; rm -rf "$HOME/.local/zed.app" ;;
+        broken-link) [[ -L $HOME/.local/bin/zed ]] ;;
+        broken-cli) grep -q 'exit 1' "$HOME/.local/bin/zed" ;;
+    esac
+    reset_fixture
+done
+for error in download-failure installer-failure; do
+    touch "$HOME/$error"
+    expect_failure install_zed
+    [[ ! -e $(cat "$HOME/installer-path") && ! -e $HOME/.local/bin/zed ]]
+    if [[ $error == download-failure ]]; then ! grep -q '^installer$' "$HOME/calls"; fi
+    reset_fixture
+done
+expect_failure verify_zed
+printf 'PASS Zed WSL skip, macOS cask/reuse/errors, Linux installer/reuse/errors, partial install preservation (isolated doubles)\n'
