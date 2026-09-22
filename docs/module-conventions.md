@@ -2,10 +2,10 @@
 
 Domains live directly at root: setup-tools, setup-shell, setup-git, setup-editor,
 setup-docker and setup-workspace. Implemented domains own install.sh, verify.sh,
-files/ and tests/. Planned domains have a README only, never a success-returning
+tests/ and files/ when deploying configuration. Planned domains have a README only, never a success-returning
 installer. Platform-specific files are introduced only for real implementation.
 
-setup.sh explicitly runs tools → shell → Git → doctor, stops on installation failure and
+setup.sh explicitly runs tools → shell → Git → Docker → doctor, stops on installation failure and
 identifies the step. Doctor aggregates implemented verifiers and distinguishes
 planned domains. Keep dispatch explicit; no plugin registry or framework. Resolve
 paths relative to each entry point, independent of the caller's directory.
@@ -29,6 +29,13 @@ not own it. Do not uninstall, take over or silently upgrade existing tools.
 - setup-git owns fixed Workspace identities, Git preferences and GitHub SSH aliases
   backed by Bitwarden Agent. It deploys public keys only; desktop authorization
   settings and WSL agent bridges require user setup. No Git version pin or global ignore.
+- setup-docker owns OrbStack on macOS and native Engine on Ubuntu/WSL2, plus CLI,
+  Compose and Buildx. OrbStack's cask supplies macOS tools; Linux uses official
+  Docker APT packages, an exception to common-tool brew/mise ownership. Reuse
+  working providers; never remove/upgrade packages or change Docker contexts.
+  First launch, WSL systemd configuration and group membership are manual. Only
+  a newly installed Linux Engine is explicitly enabled/started. Tools-only checks
+  never probe the daemon; doctor requires the selected platform's local socket.
 - Project runtimes belong to each project's mise.toml. Planned domains own no
   current files. Personal mise files and shell customizations remain user-owned.
 

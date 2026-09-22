@@ -2,7 +2,7 @@
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 if [[ ${1-} == --help && $# == 1 ]]; then
-    printf 'Usage: setup.sh\nInstalls setup-tools, then setup-shell and setup-git, then runs doctor.\n'
+    printf 'Usage: setup.sh\nInstalls tools, shell, Git and Docker, then runs doctor.\n'
     exit 0
 fi
 shell_args=()
@@ -10,7 +10,7 @@ if (( $# )); then
     [[ $# == 2 && $1 == --shell && ( $2 == bash || $2 == zsh ) ]] || { printf 'Usage: setup.sh [--shell bash|zsh]\n' >&2; exit 2; }
     shell_args=("$@")
 fi
-for domain in setup-tools setup-shell setup-git; do
+for domain in setup-tools setup-shell setup-git setup-docker; do
     printf '==> Installing %s\n' "$domain"
     args=()
     [[ $domain != setup-shell ]] || args=(${shell_args[@]+"${shell_args[@]}"})

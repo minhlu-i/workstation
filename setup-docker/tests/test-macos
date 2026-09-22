@@ -1,0 +1,71 @@
+#!/bin/bash
+set -euo pipefail
+root=$(cd "$(dirname "$0")/../.." && pwd)
+module=$root/setup-docker
+source "$module/common.bash"
+source "$module/macos.bash"
+fixture=$(mktemp -d)
+trap 'rm -rf -- "$fixture"' EXIT
+export HOME=$fixture/home
+mkdir -p "$HOME"
+assert_contains() { grep -Fq -- "$2" "$1" || fail "Expected $2 in $1"; }
+scenario() (
+    name=$1
+    log=$fixture/$name.log
+    : > "$log"
+    platform=Darwin BREW=fixture_brew
+    app_present=0 cli_present=1 brew_status=0 cask_present=0 install_status=0 create_app=1
+    case $name in
+        reuse) app_present=1; BREW= ;;
+        fresh) ;;
+        missing-brew) BREW= ;;
+        broken-brew) brew_status=1 ;;
+        broken-cask) cask_present=1 ;;
+        install-fails) install_status=1 ;;
+        missing-app) create_app=0 ;;
+        first-launch) cli_present=0 ;;
+    esac
+    orbstack_app() { [[ $app_present == 1 ]] || return 1; printf '%s\n' "$HOME/Applications/OrbStack.app"; }
+    fixture_brew() {
+        printf '%s\n' "$*" >> "$log"
+        case "$*" in
+            --version) return "$brew_status" ;;
+            'list --cask --versions orbstack') [[ $cask_present == 1 ]] ;;
+            'install --cask orbstack')
+                [[ ${HOMEBREW_NO_AUTO_UPDATE-} == 1 && ${HOMEBREW_NO_INSTALL_UPGRADE-} == 1 ]] || exit 8
+                [[ $install_status == 0 ]] || return "$install_status"
+                app_present=$create_app ;;
+            *) fail "Unexpected Homebrew command: $*" ;;
+        esac
+    }
+    working_command() { [[ $1 == docker && $cli_present == 1 ]]; }
+    docker() {
+        case "$*" in 'compose version'|'buildx version') : ;; *) fail "Unexpected Docker command: $*" ;; esac
+    }
+    open() { fail 'Must not start OrbStack'; }
+    sudo() { fail 'Must not invoke sudo'; }
+    install_macos_docker
+    verify_docker_tools
+)
+for name in reuse fresh; do
+    scenario "$name" > "$fixture/output" 2>&1 || { cat "$fixture/output"; exit 1; }
+done
+[[ ! -s $fixture/reuse.log ]] || fail 'Existing OrbStack invoked Homebrew'
+expected=$'--version\nlist --cask --versions orbstack\ninstall --cask orbstack'
+[[ $(cat "$fixture/fresh.log") == "$expected" ]] || fail 'Fresh install performed unexpected operations'
+for name in missing-brew broken-brew broken-cask install-fails missing-app first-launch; do
+    if scenario "$name" > "$fixture/output" 2>&1; then fail "$name unexpectedly passed"; fi
+    case $name in
+        missing-brew) message='Homebrew missing' ;;
+        broken-brew) message='Homebrew is unavailable/broken' ;;
+        broken-cask) message='cask exists but its app is missing/broken' ;;
+        install-fails) message='OrbStack installation failed' ;;
+        missing-app) message='app unavailable after installation' ;;
+        first-launch) message='open OrbStack once' ;;
+    esac
+    assert_contains "$fixture/output" "$message"
+    case $name in missing-brew|broken-brew|broken-cask)
+        ! grep -q '^install ' "$fixture/$name.log" || fail "$name attempted install" ;;
+    esac
+done
+printf 'PASS macOS Docker reuse, cask-only installation, repair failures and first-launch guidance.\n'

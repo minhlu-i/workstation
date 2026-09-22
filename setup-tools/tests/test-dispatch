@@ -5,11 +5,11 @@ workspace_test_dir=$(mktemp -d)
 trap 'rm -rf -- "$workspace_test_dir"' EXIT
 # Only orchestration is under test here; child scripts are explicit test doubles.
 fixture="$workspace_test_dir/repo with spaces"
-mkdir -p "$fixture"/{setup-tools,setup-shell,setup-git,doctor} "$workspace_test_dir/home"
+mkdir -p "$fixture"/{setup-tools,setup-shell,setup-git,setup-docker,doctor} "$workspace_test_dir/home"
 export HOME=$workspace_test_dir/home CALLS=$workspace_test_dir/calls
 cp "$root/setup.sh" "$root/setup-bash-workstation" "$fixture/"
 cp "$root/doctor/check.sh" "$fixture/doctor/"
-for domain in setup-tools setup-shell setup-git; do
+for domain in setup-tools setup-shell setup-git setup-docker; do
     for step in install verify; do
         cat > "$fixture/$domain/$step.sh" <<'DOUBLE'
 #!/usr/bin/env bash
@@ -22,14 +22,14 @@ DOUBLE
 done
 cd /tmp
 "$fixture/setup.sh" > "$workspace_test_dir/log"
-expected=$'setup-tools/install.sh \nsetup-shell/install.sh \nsetup-git/install.sh \nsetup-tools/verify.sh \nsetup-shell/verify.sh \nsetup-git/verify.sh '
+expected=$'setup-tools/install.sh \nsetup-shell/install.sh \nsetup-git/install.sh \nsetup-docker/install.sh \nsetup-tools/verify.sh \nsetup-shell/verify.sh \nsetup-git/verify.sh \nsetup-docker/verify.sh '
 [[ $(cat "$CALLS") == "$expected" ]]
 grep -q 'Full workstation readiness is not assessed' "$workspace_test_dir/log"
 : > "$CALLS"
 "$fixture/setup-bash-workstation" > /dev/null
-legacy_expected=$'setup-tools/install.sh \nsetup-shell/install.sh --shell bash\nsetup-git/install.sh \nsetup-tools/verify.sh \nsetup-shell/verify.sh --shell bash\nsetup-git/verify.sh '
+legacy_expected=$'setup-tools/install.sh \nsetup-shell/install.sh --shell bash\nsetup-git/install.sh \nsetup-docker/install.sh \nsetup-tools/verify.sh \nsetup-shell/verify.sh --shell bash\nsetup-git/verify.sh \nsetup-docker/verify.sh '
 [[ $(cat "$CALLS") == "$legacy_expected" ]]
-for step in setup-tools/install.sh setup-shell/install.sh setup-git/install.sh; do
+for step in setup-tools/install.sh setup-shell/install.sh setup-git/install.sh setup-docker/install.sh; do
     : > "$CALLS"
     status=0
     FAIL_STEP=$step "$fixture/setup.sh" > "$workspace_test_dir/log" 2>&1 || status=$?
@@ -38,12 +38,12 @@ for step in setup-tools/install.sh setup-shell/install.sh setup-git/install.sh; 
     ! grep -q 'verify.sh' "$CALLS"
     if [[ $step == setup-tools/install.sh ]]; then ! grep -q setup-shell "$CALLS"; fi
 done
-for step in setup-tools/verify.sh setup-shell/verify.sh setup-git/verify.sh; do
+for step in setup-tools/verify.sh setup-shell/verify.sh setup-git/verify.sh setup-docker/verify.sh; do
     : > "$CALLS"
     status=0
     FAIL_STEP=$step "$fixture/doctor/check.sh" > "$workspace_test_dir/log" 2>&1 || status=$?
     [[ $status == 1 ]]
-    (( $(wc -l < "$CALLS") == 3 ))
+    (( $(wc -l < "$CALLS") == 4 ))
     grep -q PLANNED "$workspace_test_dir/log"
 done
 printf 'PASS dispatch order, cwd/spaces, fail-fast status and doctor aggregation (test doubles)\n'

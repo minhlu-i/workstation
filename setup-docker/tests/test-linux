@@ -1,0 +1,118 @@
+#!/bin/bash
+set -eu
+root=$(cd "$(dirname "$0")/../.." && pwd)
+module=$root/setup-docker
+source "$root/setup-docker/linux.bash"
+fixture=$(mktemp -d)
+trap 'rm -rf -- "$fixture"' EXIT
+export HOME=$fixture/home
+mkdir -p "$HOME"
+fail() { printf '%s\n' "$*" >&2; exit 1; }
+assert_contains() { grep -Fq -- "$2" "$1" || fail "Expected $2 in $1"; }
+scenario() (
+    name=$1
+    log=$fixture/$name.log
+    : > "$log"
+    tools= packages_installed= simulated_output='' install_status=0
+    working_command() { [[ " $tools " == *" $1 "* ]]; }
+    linux_capability_works() { working_command "$1"; }
+    linux_package_installed() { [[ " $packages_installed " == *" $1 "* ]]; }
+    linux_require_systemd() { :; }
+    linux_ubuntu_suite() { printf noble; }
+    dpkg() { printf amd64; }
+    linux_inspect_sources() { LINUX_DOCKER_SOURCE_PRESENT=1; }
+    linux_prepare_repository() { printf 'repository\n' >> "$log"; }
+    apt-get() { printf '%s\n' "$simulated_output"; }
+    sudo() {
+        printf '%s\n' "$*" >> "$log"
+        if [[ $1 == apt-get && $2 == install ]]; then
+            (( install_status == 0 )) || return "$install_status"
+            tools="$tools containerd"
+        fi
+    }
+    case $name in
+        fresh) tools=curl; packages_installed=ca-certificates ;;
+        reuse) tools='dockerd docker compose buildx containerd'; packages_installed='docker.io containerd' ;;
+        plugin) tools='dockerd docker compose containerd curl'; packages_installed='docker-ce docker-ce-cli docker-compose-plugin containerd.io ca-certificates' ;;
+        conflict) tools='docker'; packages_installed=docker.io ;;
+        broken) packages_installed=docker-ce ;;
+        unmanaged) tools=docker ;;
+        unsafe) tools=curl; packages_installed=ca-certificates; simulated_output='Inst libc6 [old] (new Ubuntu)' ;;
+        removal) tools=curl; packages_installed=ca-certificates; simulated_output='Remv runc [old]' ;;
+        failure) tools=curl; packages_installed=ca-certificates; install_status=1 ;;
+        systemd) linux_require_systemd() { fail 'systemd unavailable'; } ;;
+    esac
+    install_linux_docker
+)
+scenario fresh > "$fixture/output" 2>&1 || { cat "$fixture/output"; exit 1; }
+assert_contains "$fixture/fresh.log" 'apt-get install --no-upgrade --no-remove -y docker-ce docker-ce-cli docker-compose-plugin docker-buildx-plugin containerd.io'
+assert_contains "$fixture/fresh.log" 'systemctl enable --now docker'
+scenario reuse > "$fixture/output" 2>&1
+[[ ! -s $fixture/reuse.log ]] || fail 'Reuse mutated the host'
+scenario plugin > "$fixture/output" 2>&1
+assert_contains "$fixture/plugin.log" 'apt-get install --no-upgrade --no-remove -y docker-buildx-plugin'
+! grep -q systemctl "$fixture/plugin.log" || fail 'Existing engine was started'
+for name in conflict broken unmanaged unsafe removal failure systemd; do
+    if scenario "$name" > "$fixture/output" 2>&1; then fail "$name unexpectedly succeeded"; fi
+    case $name in
+        conflict|broken|unmanaged|systemd) [[ ! -s $fixture/$name.log ]] || fail "$name mutated the host" ;;
+        unsafe|removal) ! grep -q 'apt-get install' "$fixture/$name.log" || fail "$name installed packages" ;;
+        failure) ! grep -q systemctl "$fixture/$name.log" || fail 'Started failed install' ;;
+    esac
+done
+# Exercise real source inspection against isolated files.
+mkdir -p "$fixture/apt/sources.list.d"
+linux_inspect_sources "$fixture/apt" noble
+[[ $LINUX_DOCKER_SOURCE_PRESENT == 0 ]]
+printf 'deb [signed-by=/key] https://download.docker.com/linux/ubuntu noble stable\n' > "$fixture/apt/sources.list.d/existing.list"
+linux_inspect_sources "$fixture/apt" noble
+[[ $LINUX_DOCKER_SOURCE_PRESENT == 1 ]]
+cp "$fixture/apt/sources.list.d/existing.list" "$fixture/apt/sources.list.d/duplicate.list"
+if (linux_inspect_sources "$fixture/apt" noble) > "$fixture/output" 2>&1; then fail 'Duplicate source accepted'; fi
+# Exercise repository creation with writes confined to this fixture.
+(
+    sudo() {
+        local last= argument
+        for argument in "$@"; do last=$argument; done
+        [[ $last == "$fixture/"* ]] || fail "Unexpected write outside fixture: $*"
+        case $1 in install|tee) "$@" ;; *) fail "Unexpected privileged command: $*" ;; esac
+    }
+    curl() {
+        local last= argument
+        printf 'download\n' >> "$fixture/downloads"
+        for argument in "$@"; do last=$argument; done
+        printf 'fixture-signing-key\n' > "$last"
+    }
+    directory=$fixture/new-apt
+    LINUX_DOCKER_SOURCE_PRESENT=0
+    linux_prepare_repository noble amd64 "$directory"
+    assert_contains "$directory/keyrings/docker.asc" fixture-signing-key
+    assert_contains "$directory/sources.list.d/docker.sources" 'Suites: noble'
+    cp "$directory/sources.list.d/docker.sources" "$fixture/source-before"
+    linux_inspect_sources "$directory" noble
+    linux_prepare_repository noble amd64 "$directory"
+    cmp "$fixture/source-before" "$directory/sources.list.d/docker.sources"
+    [[ $(wc -l < "$fixture/downloads" | tr -d ' ') == 1 ]] || fail 'Repeat downloaded a key'
+    directory=$fixture/existing-key
+    mkdir -p "$directory/keyrings"
+    printf 'existing-key\n' > "$directory/keyrings/docker.asc"
+    LINUX_DOCKER_SOURCE_PRESENT=0
+    linux_prepare_repository noble amd64 "$directory"
+    assert_contains "$directory/keyrings/docker.asc" existing-key
+    [[ $(wc -l < "$fixture/downloads" | tr -d ' ') == 1 ]] || fail 'Existing key was downloaded again'
+    directory=$fixture/failed-key
+    curl() { return 1; }
+    if (linux_prepare_repository noble amd64 "$directory") > "$fixture/output" 2>&1; then fail 'Download failure ignored'; fi
+    [[ ! -e $directory/sources.list.d/docker.sources ]] || fail 'Source written despite failed key'
+    directory=$fixture/symlink-key
+    mkdir -p "$directory/keyrings"
+    ln -s "$fixture/nonexistent" "$directory/keyrings/docker.asc"
+    if (linux_prepare_repository noble amd64 "$directory") > "$fixture/output" 2>&1; then fail 'Dangling key symlink accepted'; fi
+    [[ ! -e $fixture/nonexistent ]] || fail 'Dangling key target written'
+    directory=$fixture/symlink-source
+    mkdir -p "$directory/sources.list.d"
+    ln -s "$fixture/nonexistent" "$directory/sources.list.d/docker.sources"
+    if (linux_inspect_sources "$directory" noble) > "$fixture/output" 2>&1; then fail 'Dangling source symlink accepted'; fi
+    if (linux_prepare_repository noble amd64 "$directory") > "$fixture/output" 2>&1; then fail 'Dangling source overwritten'; fi
+)
+printf 'Linux Docker fixture tests passed.\n'

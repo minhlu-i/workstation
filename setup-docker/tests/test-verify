@@ -1,0 +1,109 @@
+#!/bin/bash
+set -euo pipefail
+root=$(cd "$(dirname "$0")/../.." && pwd)
+module=$root/setup-docker
+source "$module/common.bash"
+fixture=$(mktemp -d)
+trap 'rm -rf -- "$fixture"' EXIT
+export HOME=$fixture/home
+mkdir -p "$HOME/.orbstack/run" "$fixture/entry"
+assert_contains() { grep -Fq -- "$2" "$1" || fail "Expected $2 in $1"; }
+# An actual Unix socket tests -S and inode identity without running a daemon.
+# Closing the socket deliberately leaves its filesystem entry for readiness tests.
+python3 - "$HOME/.orbstack/run/docker.sock" "$fixture/other.sock" <<'PY'
+import socket, sys
+for path in sys.argv[1:]:
+    sock = socket.socket(socket.AF_UNIX)
+    sock.bind(path)
+    sock.close()
+PY
+ln -s "$HOME/.orbstack/run/docker.sock" "$fixture/compat.sock"
+scenario() (
+    name=$1
+    log=$fixture/$name.log
+    : > "$log"
+    unset DOCKER_HOST DOCKER_CONTEXT
+    platform=Darwin app_present=1 cli_present=1 compose_present=1 buildx_present=1
+    selected=orbstack fixture_endpoint=unix://$HOME/.orbstack/run/docker.sock info_status=0 engine=linux dockerd_present=1
+    fixture_native_socket=$HOME/.orbstack/run/docker.sock
+    case $name in
+        valid|tools-only) ;;
+        linux-valid) platform=Linux ;;
+        linux-alias) platform=Linux; fixture_endpoint=unix://$fixture/compat.sock ;;
+        linux-foreign) platform=Linux; fixture_native_socket=$fixture/compat.sock ;;
+        linux-missing-dockerd) platform=Linux; dockerd_present=0 ;;
+        compat) fixture_endpoint=unix://$fixture/compat.sock ;;
+        remote) fixture_endpoint=ssh://remote ;;
+        host-remote) DOCKER_HOST=tcp://remote:2376 ;;
+        context-wins) DOCKER_CONTEXT=orbstack; DOCKER_HOST=tcp://remote:2376 ;;
+        remote-context-wins) DOCKER_CONTEXT=remote; DOCKER_HOST=$fixture_endpoint; fixture_endpoint=ssh://remote ;;
+        wrong-socket) fixture_endpoint=unix://$fixture/other.sock ;;
+        missing-socket) fixture_endpoint=unix://$fixture/missing.sock ;;
+        stopped) info_status=1; engine='Cannot connect to the Docker daemon' ;;
+        denied) info_status=1; engine='permission denied' ;;
+        windows) engine=windows ;;
+        missing-app) app_present=0 ;;
+        missing-cli) cli_present=0 ;;
+        missing-compose) compose_present=0 ;;
+        missing-buildx) buildx_present=0 ;;
+    esac
+    orbstack_app() { [[ $app_present == 1 ]]; }
+    native_docker_socket() { printf '%s\n' "$fixture_native_socket"; }
+    working_command() {
+        case $1 in
+            docker) [[ $cli_present == 1 ]] ;;
+            dockerd) [[ $dockerd_present == 1 ]] ;;
+            *) fail "Unexpected capability: $1" ;;
+        esac
+    }
+    docker() {
+        printf '%s\n' "$*" >> "$log"
+        case "$*" in
+            'compose version') [[ $compose_present == 1 ]] ;;
+            'buildx version') [[ $buildx_present == 1 ]] ;;
+            'context show') printf '%s\n' "$selected" ;;
+            'context inspect '* )
+                [[ $3 == "${DOCKER_CONTEXT:-$selected}" ]] || fail 'Wrong context inspected'
+                printf '%s\n' "$fixture_endpoint" ;;
+            'info --format {{.OSType}}') printf '%s\n' "$engine"; return "$info_status" ;;
+            *) fail "Unexpected Docker operation: $*" ;;
+        esac
+    }
+    if [[ $name == tools-only ]]; then
+        # Run the real entry point with environment discovery replaced by a fixture.
+        # This proves --tools-only exits before context inspection or daemon access.
+        source "$fixture/entry/verify.sh" --tools-only
+    else
+        verify_docker_tools
+        verify_docker_runtime
+    fi
+)
+cp "$module/verify.sh" "$fixture/entry/verify.sh"
+printf 'docker_environment() { platform=Darwin; }\n' > "$fixture/entry/common.bash"
+for name in valid compat context-wins tools-only linux-valid linux-alias; do
+    scenario "$name" > "$fixture/output" 2>&1 || { cat "$fixture/output"; exit 1; }
+done
+[[ $(cat "$fixture/tools-only.log") == $'compose version\nbuildx version' ]] || fail 'Tools-only touched daemon or context'
+! grep -q 'context show' "$fixture/context-wins.log" || fail 'DOCKER_CONTEXT failed to override selected context'
+for name in linux-foreign linux-missing-dockerd remote host-remote remote-context-wins wrong-socket missing-socket stopped denied windows missing-app missing-cli missing-compose missing-buildx; do
+    if scenario "$name" > "$fixture/output" 2>&1; then fail "$name unexpectedly passed"; fi
+    case $name in
+        linux-foreign) message='Native Docker socket' ;;
+        linux-missing-dockerd) message='Native Docker Engine missing/broken' ;;
+        remote|host-remote|remote-context-wins) message='not a local Unix socket' ;;
+        wrong-socket|missing-socket) message='not the running OrbStack socket' ;;
+        stopped) message='Cannot connect to the Docker daemon' ;;
+        denied) message='permission denied' ;;
+        windows) message='not a Linux container engine' ;;
+        missing-app) message='OrbStack app missing' ;;
+        missing-cli) message='Docker CLI missing/broken' ;;
+        missing-compose) message='Docker Compose plugin missing/broken' ;;
+        missing-buildx) message='Docker Buildx plugin missing/broken' ;;
+    esac
+    assert_contains "$fixture/output" "$message"
+    case $name in stopped|denied|windows) ;; *)
+        ! grep -q '^info ' "$fixture/$name.log" || fail "$name queried daemon" ;;
+    esac
+done
+! grep -q '^context ' "$fixture/host-remote.log" || fail 'DOCKER_HOST did not override selected context'
+printf 'PASS read-only Docker tools, context precedence, socket identity and Linux-engine readiness.\n'

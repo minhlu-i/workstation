@@ -1,19 +1,20 @@
 # Workstation
 
 Goal: a new macOS/Linux/WSL2 machine → workstation setup → ready to code.
-Currently tools, interactive shell and Git configuration are implemented.
-Editor, Docker and workspace setup remain planned. Doctor does not certify a
+Currently tools, interactive shell, Git configuration and Docker are implemented.
+Editor and workspace setup remain planned. Doctor does not certify a
 complete development workstation.
 
 ```bash
-./setup.sh                       # tools → native shell → Git → doctor
+./setup.sh                       # tools → native shell → Git → Docker → doctor
 ./setup-tools/install.sh         # Homebrew/mise and missing common CLI
 ./setup-shell/install.sh         # Bash on Ubuntu/WSL2; Zsh on macOS
+./setup-docker/install.sh        # OrbStack / native Ubuntu Docker Engine
 TERM=xterm-256color ./doctor/check.sh
 ```
 
 Run as the intended user, not with sudo. Homebrew's initial installation may need
-sudo; regular tool installation does not. Entry points work from any directory.
+sudo; native Docker installation on Ubuntu also uses sudo. Entry points work from any directory.
 No login shell, system shell binary, profile, secrets or terminal settings are changed.
 
 ## Platforms and package ownership
@@ -37,8 +38,10 @@ Starship/zoxide/Flyline use **mise**. Manifests retain `latest` for mise-managed
 entries, but omit working external tools to avoid competing installations.
 Project runtimes (Node/Python/Go, etc.) remain in each project's `mise.toml`.
 
-Apt and Xcode Command Line Tools are only the OS bootstrap layer. When Homebrew
-is missing, setup prepares this layer automatically:
+Apt and Xcode Command Line Tools provide the OS bootstrap layer. Docker is the
+domain-specific exception: Ubuntu/WSL2 uses Docker's official APT repository;
+macOS uses the OrbStack cask and its bundled CLI/plugins. When Homebrew is missing,
+setup prepares the bootstrap layer automatically:
 
 - Ubuntu: check existing commands, display missing prerequisite packages, then
   run `sudo apt-get update` and install only the missing packages with
@@ -68,10 +71,16 @@ or copy); setup cannot supply Git before you have obtained the checkout.
 | [setup-shell](setup-shell/README.md) | Implemented: native shell, shell plugins, shared Starship/zoxide, modular startup |
 | [setup-git](setup-git/README.md) | Implemented: workspace identities and Bitwarden SSH agent configuration |
 | [setup-editor](setup-editor/README.md) | Planned: editor configuration |
-| [setup-docker](setup-docker/README.md) | Planned: container tooling |
+| [setup-docker](setup-docker/README.md) | Implemented: OrbStack / native Docker Engine, CLI, Compose and Buildx |
 | [setup-workspace](setup-workspace/README.md) | Planned: workspace organization |
 
 Read [module conventions](docs/module-conventions.md) before extending the repo.
+
+Setup may need a manual continuation: launch OrbStack once to expose its CLI and
+plugins, enable systemd and restart WSL if needed, or choose Linux Docker socket
+access and relogin after a group change. Setup does not launch OrbStack or change
+group membership. Missing first-launch tools stop installation; an inaccessible
+Engine fails doctor. See [Docker setup and recovery](setup-docker/README.md).
 
 ## Configuration, migration and recovery
 
@@ -129,6 +138,9 @@ including personal fragments, and may create normal history/completion caches.
 
 Git runtime checks require Bitwarden Desktop and its SSH agent; see
 [setup-git](setup-git/README.md) for authorization settings and WSL limitations.
+Docker runtime checks require the selected local OrbStack/native Engine socket
+to be reachable by the current user. They never pull images or run containers;
+`./setup-docker/verify.sh --tools-only` checks installed tools without probing it.
 
 Tests use temporary homes:
 
@@ -139,6 +151,9 @@ Tests use temporary homes:
 ./setup-tools/tests/test-bootstrap       # OS/sudo/installer doubles
 ./setup-tools/tests/test-configure
 ./setup-tools/tests/test-dispatch
+./setup-docker/tests/test-linux        # APT/systemd/provider doubles
+./setup-docker/tests/test-macos        # OrbStack/Homebrew doubles
+./setup-docker/tests/test-verify       # local socket/context/CLI fixtures
 ./setup-shell/tests/test-module
 ./setup-shell/tests/test-install-dependencies
 ./setup-shell/tests/test-native-config  # requires Zsh
