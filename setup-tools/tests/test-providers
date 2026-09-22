@@ -13,7 +13,7 @@ source "$root/setup-tools/file-operations.bash"
 source "$root/setup-tools/dependencies.bash"
 # Every common CLI has an explicitly supplied external provider, independent of
 # packages installed on the host running this test.
-for command in bat delta eza fd jq rg tldr yq; do
+for command in bat claude codex delta eza fd jq rg tldr yq; do
     printf '#!/bin/sh\nexit 0\n' > "$HOME/bin/$command"
     chmod +x "$HOME/bin/$command"
 done
@@ -90,9 +90,9 @@ cat > "$HOME/bin/mise" <<'MISE'
 #!/bin/sh
 printf '%s\n' "mise $*" >> "$HOME/manager-calls"
 case $1 in
-where) [ -e "$HOME/mise-bat-installed" ] ;;
-install) [ "$2" = bat ] && touch "$HOME/mise-bat-installed" ;;
-which) printf '%s/bin/mise-bat\n' "$HOME" ;;
+where) [ -e "$HOME/mise-$2-installed" ] ;;
+install) shift; for tool do touch "$HOME/mise-$tool-installed"; done ;;
+which) printf '%s/bin/mise-%s\n' "$HOME" "$2" ;;
 *) exit 99 ;;
 esac
 MISE
@@ -109,4 +109,33 @@ if verify_mise_tools "$root/setup-tools/files/mise.toml" "$HOME/manifest.toml" >
 cp "$HOME/valid-manifest.toml" "$HOME/manifest.toml"
 printf '\n[settings]\n' >> "$HOME/manifest.toml"
 if verify_mise_tools "$root/setup-tools/files/mise.toml" "$HOME/manifest.toml" >/dev/null 2>&1; then fail 'Unexpected manifest passed'; fi
-printf 'PASS provider reuse, offline manifests, missing/broken routing, doctor dependencies (test doubles)\n'
+# Previously reused AI CLIs must fail verification when unavailable. Broken
+# doubles shadow host CLIs; mise shims must not run during offline configuration.
+cp "$HOME/valid-manifest.toml" "$HOME/manifest.toml"
+for command in claude codex; do
+    printf '#!/bin/sh\nexit 1\n' > "$HOME/bin/$command"
+    if verify_mise_tools "$root/setup-tools/files/mise.toml" "$HOME/manifest.toml" > "$HOME/ai-verify-error" 2>&1; then fail "Missing external $command passed"; fi
+    grep -Fxq "Broken/missing external tool: $command" "$HOME/ai-verify-error"
+    printf '#!/bin/sh\necho ai-shim >> "$HOME/manager-calls"\nexit 99\n' > "$MISE_DATA_DIR/shims/$command"
+    chmod +x "$MISE_DATA_DIR/shims/$command"
+done
+cp "$HOME/manager-calls" "$HOME/calls-before"
+configure_mise_tools "$root/setup-tools/files/mise.toml" "$HOME/manifest.toml" manifest.toml --configure-only
+for command in claude codex; do
+    grep -Fxq "\"$command\" = \"latest\"" "$HOME/manifest.toml"
+    printf '#!/bin/sh\nexit 0\n' > "$HOME/bin/mise-$command"
+    chmod +x "$HOME/bin/mise-$command"
+done
+cmp "$HOME/calls-before" "$HOME/manager-calls"
+configure_mise_tools "$root/setup-tools/files/mise.toml" "$HOME/manifest.toml" manifest.toml ''
+[[ $(grep -Fxc "mise install claude codex" "$HOME/manager-calls") == 1 ]]
+verify_mise_tools "$root/setup-tools/files/mise.toml" "$HOME/manifest.toml"
+configure_mise_tools "$root/setup-tools/files/mise.toml" "$HOME/manifest.toml" manifest.toml ''
+[[ $(grep -c '^mise install' "$HOME/manager-calls") == 2 ]]
+for command in claude codex; do
+    mv "$HOME/bin/mise-$command" "$HOME/missing-ai-cli"
+    if verify_mise_tools "$root/setup-tools/files/mise.toml" "$HOME/manifest.toml" > "$HOME/ai-verify-error" 2>&1; then fail "Missing managed $command passed"; fi
+    grep -Fxq "Broken/missing mise tool: $command" "$HOME/ai-verify-error"
+    mv "$HOME/missing-ai-cli" "$HOME/bin/mise-$command"
+done
+printf 'PASS provider reuse, offline manifests, missing/broken routing, AI CLI management and doctor dependencies (test doubles)\n'
