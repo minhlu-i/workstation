@@ -5,7 +5,7 @@ setup-docker and setup-workspace. Implemented domains own install.sh, verify.sh,
 files/ and tests/. Planned domains have a README only, never a success-returning
 installer. Platform-specific files are introduced only for real implementation.
 
-setup.sh explicitly runs tools → shell → doctor, stops on installation failure and
+setup.sh explicitly runs tools → shell → Git → doctor, stops on installation failure and
 identifies the step. Doctor aggregates implemented verifiers and distinguishes
 planned domains. Keep dispatch explicit; no plugin registry or framework. Resolve
 paths relative to each entry point, independent of the caller's directory.
@@ -26,6 +26,9 @@ not own it. Do not uninstall, take over or silently upgrade existing tools.
   setup-shell.toml for shell tools under ~/.config/mise/conf.d/. Manifests contain
   the approved subset needing mise; working external tools are omitted. The
   latest/missing-only policy remains for mise-managed entries.
+- setup-git owns fixed Workspace identities, Git preferences and GitHub SSH aliases
+  backed by Bitwarden Agent. It deploys public keys only; desktop authorization
+  settings and WSL agent bridges require user setup. No Git version pin or global ignore.
 - Project runtimes belong to each project's mise.toml. Planned domains own no
   current files. Personal mise files and shell customizations remain user-owned.
 

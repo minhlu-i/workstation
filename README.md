@@ -1,12 +1,12 @@
 # Workstation
 
 Goal: a new macOS/Linux/WSL2 machine → workstation setup → ready to code.
-Currently tools and interactive shell setup are implemented. Git configuration,
-editor, Docker and workspace setup remain planned. Doctor does not certify a
+Currently tools, interactive shell and Git configuration are implemented.
+Editor, Docker and workspace setup remain planned. Doctor does not certify a
 complete development workstation.
 
 ```bash
-./setup.sh                       # tools → native shell → doctor
+./setup.sh                       # tools → native shell → Git → doctor
 ./setup-tools/install.sh         # Homebrew/mise and missing common CLI
 ./setup-shell/install.sh         # Bash on Ubuntu/WSL2; Zsh on macOS
 TERM=xterm-256color ./doctor/check.sh
@@ -66,7 +66,7 @@ or copy); setup cannot supply Git before you have obtained the checkout.
 |---|---|
 | [setup-tools](setup-tools/README.md) | Implemented: Homebrew bootstrap, mise, base commands and common CLI |
 | [setup-shell](setup-shell/README.md) | Implemented: native shell, shell plugins, shared Starship/zoxide, modular startup |
-| [setup-git](setup-git/README.md) | Planned: Git configuration; git executable is checked by setup-tools |
+| [setup-git](setup-git/README.md) | Implemented: workspace identities and Bitwarden SSH agent configuration |
 | [setup-editor](setup-editor/README.md) | Planned: editor configuration |
 | [setup-docker](setup-docker/README.md) | Planned: container tooling |
 | [setup-workspace](setup-workspace/README.md) | Planned: workspace organization |
@@ -78,6 +78,7 @@ Read [module conventions](docs/module-conventions.md) before extending the repo.
 ```bash
 ./setup-tools/install.sh --configure-only
 ./setup-shell/install.sh --configure-only
+./setup-git/install.sh --configure-only
 ```
 
 The setup code in this mode never installs/downloads tools or invokes brew/mise.
@@ -121,14 +122,19 @@ for Zsh. `--shell bash|zsh` can explicitly select shell configuration/verificati
 
 ## Verification
 
-Doctor checks both implemented domains, continues after a verifier fails, reports
+Doctor checks all implemented domains, continues after a verifier fails, reports
 planned domains separately and returns nonzero on mandatory failure. It does not
 install or repair configuration. Shell verification executes interactive startup,
 including personal fragments, and may create normal history/completion caches.
 
+Git runtime checks require Bitwarden Desktop and its SSH agent; see
+[setup-git](setup-git/README.md) for authorization settings and WSL limitations.
+
 Tests use temporary homes:
 
 ```bash
+./setup-git/tests/test-configure
+./setup-git/tests/test-agent             # Python 3; agent double
 ./setup-tools/tests/test-providers
 ./setup-tools/tests/test-bootstrap       # OS/sudo/installer doubles
 ./setup-tools/tests/test-configure

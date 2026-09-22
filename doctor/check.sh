@@ -7,7 +7,7 @@ if (( $# )); then
     shell_args=("$@")
 fi
 failures=0
-for domain in setup-tools setup-shell; do
+for domain in setup-tools setup-shell setup-git; do
     printf '==> Checking %s (implemented)\n' "$domain"
     args=()
     [[ $domain != setup-shell ]] || args=(${shell_args[@]+"${shell_args[@]}"})
@@ -18,9 +18,9 @@ for domain in setup-tools setup-shell; do
         failures=$((failures+1))
     fi
 done
-printf 'PLANNED (not checked): setup-git setup-editor setup-docker setup-workspace\n'
+printf 'PLANNED (not checked): setup-editor setup-docker setup-workspace\n'
 if (( failures )); then
     printf 'Implemented-domain checks failed: %s\n' "$failures" >&2
     exit 1
 fi
-printf 'Tools and shell checks passed. Full workstation readiness is not assessed.\n'
+printf 'Tools, shell and Git checks passed. Full workstation readiness is not assessed.\n'

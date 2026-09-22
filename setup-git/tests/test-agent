@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
+work=$(mktemp -d)
+trap 'rm -rf -- "$work"' EXIT
+export HOME="$work/home" XDG_CONFIG_HOME="$work/home/.config" GIT_CONFIG_NOSYSTEM=1
+unset GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS GIT_DIR GIT_WORK_TREE WORKSTATION_SSH_AGENT_SOCKET
+mkdir -p "$HOME" "$work/bin"
+bash "$root/setup-git/install.sh" --configure-only >/dev/null
+for account in personal s5tech; do ssh-keygen -lf "$root/setup-git/files/$account.pub" -E sha256; done > "$work/keys"
+cat > "$work/bin/ssh-add" <<'DOUBLE'
+#!/usr/bin/env bash
+[[ $* == '-l -E sha256' ]] || exit 9
+[[ $SSH_AUTH_SOCK == "$HOME/.bitwarden-ssh-agent.sock" ]] || exit 9
+case ${AGENT_CASE-} in
+    missing) head -1 "$AGENT_KEYS" ;;
+    unavailable) exit 2 ;;
+    *) cat "$AGENT_KEYS" ;;
+esac
+DOUBLE
+chmod +x "$work/bin/ssh-add"
+# A bound Unix socket plus ssh-add double exercises diagnostics, not Bitwarden itself.
+PATH="$work/bin:$PATH" AGENT_KEYS="$work/keys" python3 - "$root" <<'PY'
+import os, socket, subprocess, sys
+with socket.socket(socket.AF_UNIX) as agent:
+    agent.bind(os.path.join(os.environ['HOME'], '.bitwarden-ssh-agent.sock'))
+    for case, message in [('ready','PASS agent lists both'),('missing','expected s5tech key'),('unavailable','Agent unavailable')]:
+        result = subprocess.run(['bash',sys.argv[1]+'/setup-git/verify.sh'],env=dict(os.environ,AGENT_CASE=case),capture_output=True,text=True)
+        assert result.returncode == (0 if case == 'ready' else 1), result.stdout+result.stderr
+        assert message in result.stdout+result.stderr, result.stdout+result.stderr
+print('PASS agent readiness/missing-key/unavailable diagnostics (test double)')
+PY
