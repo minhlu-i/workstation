@@ -38,6 +38,10 @@ Starship/zoxide/Flyline use **mise**. Manifests retain `latest` for mise-managed
 entries, but omit working external tools to avoid competing installations.
 Project runtimes (Node/Python/Go, etc.) remain in each project's `mise.toml`.
 
+Common CLI include Codex (`codex`) and Claude Code (`claude`) on all supported
+platforms, including WSL2. Setup reuses existing installations or installs missing
+ones with mise. Sign in manually afterward; account/configuration sync is not managed.
+
 Zed uses the macOS Homebrew cask or its official installer on native Ubuntu;
 WSL skips Zed. Restore editor settings from your online configuration manually.
 

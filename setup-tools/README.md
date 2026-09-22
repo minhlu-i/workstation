@@ -19,6 +19,16 @@ Missing base commands and mise use brew. Missing common CLI use mise with the
 existing `latest` policy. Existing resolved mise installations are reused.
 No project language runtimes or project requirements belong here.
 
+The CLI inventory includes Codex CLI (`codex`) and Claude Code CLI (`claude`) on
+macOS, Ubuntu and WSL2. Missing installations use the corresponding
+[mise registry](https://mise.jdx.dev/registry) entries; working external installs
+(including Homebrew or native installers) are reused. Setup does not install a
+global Node.js runtime for these tools or upgrade existing installations.
+Doctor checks `--version`, not account access. Run `codex` or `claude` yourself
+after setup to sign in; credentials, settings, skills and plugins remain user-owned.
+See [Codex CLI](https://developers.openai.com/codex/cli) and
+[Claude Code setup](https://code.claude.com/docs/en/setup).
+
 The [dependency checks](dependencies.bash) preserve existing PATH precedence and
 avoid executing mise shims during discovery. External tools are checked with
 `--version`; yq additionally requires the Mike Farah implementation. The manifest
