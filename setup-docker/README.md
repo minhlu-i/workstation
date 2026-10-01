@@ -49,12 +49,19 @@ On WSL2, enable systemd if needed using
 then run `wsl.exe --shutdown` from Windows and reopen Ubuntu before retrying.
 Setup does not edit `/etc/wsl.conf` or configure Docker Desktop integration.
 
-Socket access is a separate user choice. Use `sudo docker info` to check privileged
-access, or explicitly configure membership in the `docker` group using
-[Docker's post-installation steps](https://docs.docker.com/engine/install/linux-postinstall/).
-That group grants root-equivalent privileges; setup never adds users to it. Log
-out and back in after changing membership. Doctor runs as your current user and
-fails if that user cannot access the socket; do not run the entire setup as root.
+After checking installed tools, setup adds the current non-root user to the
+`docker` group with `sudo usermod -aG docker USER` when membership is missing,
+including when it reuses an existing Engine. Other group memberships are preserved;
+reruns do not repeat the change. The group grants root-equivalent privileges, as
+described in [Docker's post-installation steps](https://docs.docker.com/engine/install/linux-postinstall/).
+
+Saved membership does not update an already-running session. Setup detects this
+and prints continuation instructions: log out/back in, or on WSL2 run
+`wsl --shutdown` from Windows and reopen Ubuntu. Then run `docker info` and
+`bash ~/.local/share/workstation/doctor/check.sh` (archive installation).
+Doctor still runs as your current user and fails if that session cannot access
+the socket; it never changes groups or uses sudo to hide this failure. Do not run
+the entire setup as root. `sudo docker info` can separately check privileged access.
 
 ## Verification and scope
 
@@ -75,6 +82,6 @@ configuration. Consequently a stopped runtime, stale context or missing socket
 permission makes doctor fail even after tools installation succeeds.
 
 One setup command can install dependencies, but OrbStack first launch, WSL restart
-and optional group membership/relogin remain manual steps. Tests use isolated
+and activating updated group membership through relogin remain manual steps. Tests use isolated
 homes and command doubles; they do not provision the host or prove clean-machine
 installation or real container execution.

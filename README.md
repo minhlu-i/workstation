@@ -128,9 +128,11 @@ without Git; direct checkout installation also remains supported.
 Read [module conventions](docs/module-conventions.md) before extending the repo.
 
 Setup may need a manual continuation: launch OrbStack once to expose its CLI and
-plugins, enable systemd and restart WSL if needed, or choose Linux Docker socket
-access and relogin after a group change. Setup does not launch OrbStack or change
-group membership. Missing first-launch tools stop installation; an inaccessible
+plugins, enable systemd and restart WSL if needed, or relogin after a Docker group
+change. Linux setup adds the current user to the docker group when needed; this
+grants root-equivalent access. It prints relogin/WSL restart instructions when
+saved membership is not active yet. Setup does not launch OrbStack.
+Missing first-launch tools stop installation; an inaccessible
 Engine fails doctor. See [Docker setup and recovery](setup-docker/README.md).
 
 ## Configuration, migration and recovery

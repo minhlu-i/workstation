@@ -115,4 +115,65 @@ if (linux_inspect_sources "$fixture/apt" noble) > "$fixture/output" 2>&1; then f
     if (linux_inspect_sources "$directory" noble) > "$fixture/output" 2>&1; then fail 'Dangling source symlink accepted'; fi
     if (linux_prepare_repository noble amd64 "$directory") > "$fixture/output" 2>&1; then fail 'Dangling source overwritten'; fi
 )
-printf 'Linux Docker fixture tests passed.\n'
+# Account/group operations are doubles; no real account or session is modified.
+access_scenario() (
+    name=$1
+    log=$fixture/access-$name.log
+    : > "$log"
+    saved=0 active=0 fixture_user=fixture-user group_exists=1
+    case $name in
+        active) saved=1; active=1 ;;
+        stale) saved=1 ;;
+        root) fixture_user=root ;;
+        missing-group) group_exists=0 ;;
+    esac
+    id() {
+        case "$*" in
+            -un) printf '%s\n' "$fixture_user" ;;
+            '-nG fixture-user')
+                if (( saved )); then printf 'users developers docker\n'; else printf 'users developers\n'; fi ;;
+            -nG)
+                if (( active )); then printf 'users developers docker\n'; else printf 'users developers\n'; fi ;;
+            *) fail "Unexpected id call: $*" ;;
+        esac
+    }
+    getent() { [[ $* == 'group docker' && $group_exists == 1 ]]; }
+    sudo() {
+        printf '%s\n' "$*" >> "$log"
+        case "$*" in
+            '-n -v') [[ $name != denied ]] ;;
+            'usermod -aG docker fixture-user')
+                [[ $name != failure ]] || return 1
+                [[ $name == unverified ]] || saved=1 ;;
+            *) fail "Unexpected sudo call: $*" ;;
+        esac
+    }
+    linux_configure_docker_access
+    if [[ $name == fresh ]]; then
+        # Saved membership is reused even though this process still lacks it.
+        linux_configure_docker_access
+    fi
+)
+for name in fresh stale active root; do
+    access_scenario "$name" < /dev/null > "$fixture/output" 2>&1 || { cat "$fixture/output"; exit 1; }
+    case $name in
+        fresh)
+            [[ $(cat "$fixture/access-fresh.log") == $'-n -v\nusermod -aG docker fixture-user' ]] || fail 'Group update was repeated or used the wrong account/options'
+            assert_contains "$fixture/output" 'root-equivalent'
+            assert_contains "$fixture/output" 'wsl --shutdown' ;;
+        stale)
+            [[ ! -s $fixture/access-stale.log ]]
+            assert_contains "$fixture/output" 'session has not picked it up' ;;
+        active|root) [[ ! -s $fixture/access-$name.log ]] ;;
+    esac
+done
+for name in missing-group denied failure unverified; do
+    if access_scenario "$name" < /dev/null > "$fixture/output" 2>&1; then fail "Group scenario $name unexpectedly passed"; fi
+    case $name in
+        missing-group) [[ ! -s $fixture/access-$name.log ]] ;;
+        denied) ! grep -q usermod "$fixture/access-$name.log" ;;
+        failure) assert_contains "$fixture/output" 'Could not add' ;;
+        unverified) assert_contains "$fixture/output" 'membership was not saved' ;;
+    esac
+done
+printf 'Linux Docker fixture tests passed (packages, sources and user-group access).\n'

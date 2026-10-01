@@ -59,7 +59,11 @@ not own it. Do not uninstall, take over or silently upgrade existing tools.
   Compose and Buildx. OrbStack's cask supplies macOS tools; Linux uses official
   Docker APT packages, an exception to common-tool brew/mise ownership. Reuse
   working providers; never remove/upgrade packages or change Docker contexts.
-  First launch, WSL systemd configuration and group membership are manual. Only
+  First launch, WSL systemd configuration and relogin remain manual. After tool
+  verification, Linux setup adds the current non-root user to the docker group
+  when needed, preserves other groups and explains root-equivalent access. Check
+  saved versus active membership and print relogin/WSL restart instructions when
+  the session is stale; doctor must still fail on inaccessible sockets. Only
   a newly installed Linux Engine is explicitly enabled/started. Tools-only checks
   never probe the daemon; doctor requires the selected platform's local socket.
 - Project runtimes belong to each project's mise.toml. Planned domains own no

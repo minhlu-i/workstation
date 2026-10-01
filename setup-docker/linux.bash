@@ -80,6 +80,32 @@ linux_prepare_repository() {
 linux_ubuntu_suite() {
     (. /etc/os-release; printf '%s' "${UBUNTU_CODENAME:-${VERSION_CODENAME:-}}")
 }
+linux_configure_docker_access() {
+    local user groups
+    user=$(id -un) || fail 'Could not determine the current Docker user.'
+    if [[ $user == root ]]; then
+        printf 'Root already has Docker access; no group membership changed. Run setup as your normal user to configure that account.\n'
+        return
+    fi
+    getent group docker >/dev/null || fail 'Docker group missing; repair the Docker Engine installation before retrying.'
+    groups=$(id -nG "$user") || fail 'Could not read Docker user group membership.'
+    if [[ " $groups " != *' docker '* ]]; then
+        source "$module/../setup-tools/bootstrap.bash"
+        require_bootstrap_sudo
+        printf 'Adding %s to the docker group (grants root-equivalent Docker access).\n' "$user"
+        sudo usermod -aG docker "$user" || fail 'Could not add the current user to the docker group.'
+        groups=$(id -nG "$user") || fail 'Could not verify Docker user group membership.'
+        [[ " $groups " == *' docker '* ]] || fail 'Docker group membership was not saved; inspect the account configuration.'
+    fi
+    groups=$(id -nG) || fail 'Could not read active session groups.'
+    if [[ " $groups " == *' docker '* ]]; then
+        printf 'PASS active docker-group membership for %s.\n' "$user"
+    else
+        printf 'Docker group membership is saved, but this session has not picked it up.\n'
+        printf 'Log out and back in. On WSL2, run wsl --shutdown from Windows, then reopen Ubuntu.\n'
+        printf 'After reopening, run docker info and rerun doctor/check.sh. Doctor may report permission denied until then.\n'
+    fi
+}
 install_linux_docker() {
     local entry capability package conflict fresh_engine=0 suite architecture
     local packages=() prerequisites=()

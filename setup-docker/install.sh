@@ -13,4 +13,5 @@ case $platform in
     Linux) source "$module/linux.bash"; install_linux_docker ;;
 esac
 verify_docker_tools
+[[ $platform != Linux ]] || linux_configure_docker_access
 printf 'Installation checked. Run setup-docker/verify.sh for local Engine readiness.\n'
