@@ -1,103 +1,128 @@
 # Setup Git
 
-Configures this personal workstation's Git identities and GitHub SSH aliases.
-Git itself belongs to setup-tools; any installed working Git is reused, without
-version pinning. No chezmoi, global ignore, private key export or package install.
+Configures personal/s5tech workspace identities and GitHub SSH aliases from
+Bitwarden Password Manager CLI (`bw`). Git, jq and bw belong to setup-tools.
+Bitwarden Desktop and SSH agents are not required. Private keys are restored to
+local files; no key or personal identity is shipped in this checkout.
 
 ```bash
-./setup-git/install.sh                   # configure; no network authentication
-./setup-git/install.sh --configure-only  # same behavior; no downloads
-./setup-git/verify.sh --config-only      # Git files and effective SSH config
-./setup-git/verify.sh                    # additionally check agent/key presence
+./setup-git/install.sh                   # restore once; reuse local data on rerun
+./setup-git/install.sh --refresh         # sync and import current vault data again
+./setup-git/install.sh --configure-only  # offline; requires local profile/key pairs
+./setup-git/verify.sh                    # local configuration, permissions and keys
 ```
 
-## Identity and URLs
+## Prepare the vault once
 
-- `~/Workspace/personal/`: minhlu-i, REDACTED.
-- `~/Workspace/s5tech/`: REDACTED, REDACTED.
-- New repositories default to `main`; `user.useConfigOnly=true` prevents guessed
-  identities outside configured workspaces. Explicit repo-local identity wins.
-- `git@github.com:minhlu-i/...` and `ssh://git@github.com/minhlu-i/...` use `gh-p`.
-- Equivalent SSH URLs under `99techteam` use `gh-s5`. HTTPS stays HTTPS.
-- Pull/rebase, signing, editor and credential-helper preferences are not changed.
+Keep your existing **SSH key** items `personal` and `s5tech`, each with its private
+and public key. Create a separate **Secure Note** named `workstation-git` whose
+notes contain the JSON below, replacing the example identity/owner values:
 
-The committed `.pub` files are public keys for the existing Bitwarden personal
-and s5tech items. They are deliberately not private keys. Update them when rotating
-vault keys, rerun setup, and ensure GitHub has the corresponding public keys.
-
-## Bitwarden setup and authorization
-
-Install/open Bitwarden Desktop, sign in, and ensure `personal` and `s5tech` are
-SSH key items. In Settings enable SSH Agent and select **Remember until vault is
-locked** under **Ask for authorization when using SSH agent**. This desktop
-preference is manual; this repository does not edit Bitwarden's private app state.
-Each key requires initial approval, remembered until lock. A locked vault still
-needs unlocking. See [Bitwarden SSH Agent](https://bitwarden.com/help/ssh-agent/).
-
-Only `gh-p` and `gh-s5` use the chosen `IdentityAgent`; `SSH_AUTH_SOCK` and other SSH
-hosts are not changed. `IdentityFile` selects a public key and `IdentitiesOnly yes`
-restricts key selection. Local private key files are neither read nor removed.
-
-Setup discovers an existing App Store, Flatpak or Snap socket, otherwise selects
-`~/.bitwarden-ssh-agent.sock` (macOS DMG/native Linux). For a desktop installed later,
-or another location, explicitly select its socket when running setup:
-
-```bash
-WORKSTATION_SSH_AGENT_SOCKET="$HOME/Library/Containers/com.bitwarden.desktop/Data/.bitwarden-ssh-agent.sock" ./setup-git/install.sh
+```json
+{
+  "version": 1,
+  "accounts": {
+    "personal": {
+      "name": "YOUR_PERSONAL_NAME",
+      "email": "personal@example.com",
+      "githubOwner": "YOUR-PERSONAL-GITHUB-OWNER",
+      "sshKeyItem": "personal"
+    },
+    "s5tech": {
+      "name": "YOUR_WORK_NAME",
+      "email": "work@example.com",
+      "githubOwner": "YOUR-WORK-GITHUB-OWNER",
+      "sshKeyItem": "s5tech"
+    }
+  }
+}
 ```
 
-Keep passing an override on subsequent setup runs when using a custom socket.
-The top-level setup inherits this environment variable too.
+The Secure Note stores Git metadata, not keys. `sshKeyItem` accepts an exact item
+ID or a unique item name. Duplicate names fail; use IDs to resolve ambiguity.
+Override the note lookup with `WORKSTATION_GIT_PROFILE_ITEM=<name-or-id>`.
+No shell code from the vault is evaluated.
 
-**WSL2:** the Windows Bitwarden agent is not automatically available as a Linux
-Unix socket. Establish an agent bridge separately, then pass its absolute Unix
-socket path via `WORKSTATION_SSH_AGENT_SOCKET`. This repo does not install a relay
-or change Windows services. Missing sockets fail runtime verification explicitly.
-WSL bridging and actual clean-machine Bitwarden behavior remain unverified.
+Choose the correct Bitwarden server before login (for example
+`bw config server https://vault.bitwarden.eu` for EU accounts). First installation
+prompts through bw for login/unlock. It synchronizes the vault, stages only the
+profile and two key pairs, and validates everything before deployment. A supplied
+`BW_SESSION` can be used; setup preserves caller-owned sessions. Sessions created
+by setup are locked on success/failure, and decrypted staging files are removed.
+Failed lock cleanup returns failure with instructions to run `bw lock` yourself.
+For API-key authentication, run `bw login --apikey` first, then setup prompts for
+unlock. Login/unlock may require interactive input; credentials are never embedded
+in commands or configuration. See [Bitwarden CLI](https://bitwarden.com/help/cli/).
 
-After desktop setup, manually exercise authentication:
+## Local keys and daily use
+
+Keys are written to `~/.ssh/workstation/{personal,s5tech}` with mode 600, alongside
+`.pub` files. The SSH directories have mode 700. `gh-p` and `gh-s5` explicitly set
+`IdentityAgent none` and select their local private key with `IdentitiesOnly yes`.
+Git can then use the keys without a Bitwarden session, Desktop or WSL agent bridge.
+The matching public keys must already be registered with the intended GitHub accounts.
+
+This flow requires valid, matching keys **without a passphrase** for password-free
+SSH. Encrypted or invalid private keys fail before deployment; setup never removes
+passphrases. Anyone able to read an unencrypted private key can use it. Protect the
+machine/account and its backups; vault locking does not disable a restored local key.
+Key rotation needs both an updated GitHub public key and `--refresh` on each machine.
+See [OpenSSH identity configuration](https://man.openbsd.org/ssh_config#IdentityAgent).
 
 ```bash
 ssh -T git@gh-p
 ssh -T git@gh-s5
 ```
 
-GitHub's successful SSH greeting normally exits 1; check the account in the greeting.
-Then test pull/push in each workspace. Doctor only checks the socket and the two
-expected public-key fingerprints. A listed key does not prove the vault is unlocked,
-authorization is granted, or GitHub permissions are correct. Verification does not
-contact GitHub or request signing.
+Check the account in GitHub's successful greeting (normally exit code 1), then
+exercise pull/push. Verification is local: it does not contact GitHub or prove
+account permissions. First connection may ask you to verify the server host key;
+setup never disables host verification or downloads unverified known_hosts entries.
 
-## Ownership, migration and recovery
+## Identity, ownership and recovery
 
-Managed files: `~/.config/git/workstation.gitconfig`, both Workspace `.gitconfig`
-files, and `~/.ssh/workstation/{config,personal.pub,s5tech.pub}`. Root
-`~/.gitconfig` gains a managed include; unrelated settings survive. A legacy
-`core.excludesFile` pointing exactly to `~/.gitignore_global` (or its absolute HOME
-path) is removed, while the ignore file itself is preserved. Other ignore settings
-are left alone. Existing conditional identity includes may remain harmlessly.
+`~/Workspace/personal/` and `~/Workspace/s5tech/` receive identities from the
+profile. New repos default to main; `user.useConfigOnly=true` prevents guessed
+identities outside these workspaces. Explicit repo-local identity wins. SSH URLs
+for each configured GitHub owner map to gh-p/gh-s5; HTTPS stays HTTPS. Pull/rebase,
+signing, editor and credential helper settings remain user-owned.
 
-The SSH root gains a leading managed Include. Existing standalone `Host gh-p` and
-`Host gh-s5` blocks are replaced by managed definitions; other blocks survive.
-Do not also define these aliases in combined Host patterns or other includes.
-Extra IdentityFile entries from wildcard blocks cause verification to fail with
-instructions, rather than silently selecting another key. Move those entries to
-specific unrelated hosts. Root Git/SSH config symlinks are refused for manual handling.
+Local profile: `~/.config/git/workstation-profile.json` (mode 600). This contains
+metadata/key references, not private keys. Managed files also include
+`~/.config/git/workstation.gitconfig`, each Workspace `.gitconfig`, and
+`~/.ssh/workstation/{config,personal,personal.pub,s5tech,s5tech.pub}`. Root Git/SSH
+files gain managed includes. Existing standalone gh-p/gh-s5 blocks are replaced,
+including legacy Bitwarden-agent definitions; unrelated blocks survive. Additional
+IdentityFile entries from wildcard blocks fail verification rather than selecting
+another key silently. Symlinked managed files and configuration parents are refused.
+The known experimental ~/.gitignore_global reference is removed; the file remains.
 
-Changed files are backed up under the shared legacy directory
-`~/.local/state/workstation/bash-workstation/backups/`. Identical reruns create no
-backup. Setup is not transactional: on failure, inspect its message, fix conflicting
-configuration and rerun. To restore, copy backed-up files to their home-relative
-locations and remove newly created managed files/includes only if appropriate.
+Default reruns reuse local profile/key pairs and do not access Bitwarden. Offline
+configure-only repairs configuration/permissions but cannot restore missing or invalid
+key material; use a normal install or --refresh. Neither mode changes vault contents.
 
-## Tests
+Changed files are backed up under
+`~/.local/state/workstation/bash-workstation/backups/`. **Rotation backups contain
+old private keys**, with mode 600 in protected newly created directories. Identical
+reruns create no backups. Installation is fail-fast, not transactional: fix the
+reported condition and rerun. Restore home-relative files from the printed backup
+folder when needed; never commit the deployed profile, keys or backups.
+
+## Tests and publication
 
 ```bash
 ./setup-git/tests/test-configure
-./setup-git/tests/test-agent       # Python 3 test dependency; agent double
+./setup-git/tests/test-bitwarden
+./setup-tools/tests/test-providers
 ./setup-tools/tests/test-dispatch
 ```
 
-Tests use temporary HOME and explicit SSH config paths (OpenSSH's default home
-lookup does not follow the HOME environment variable). No host provisioning or
-real Bitwarden authentication occurs. Python is only a test dependency.
+Tests use temporary HOME, generated disposable key pairs and an explicit bw double.
+They cover import failures/session cleanup, key matching, passphrase rejection,
+permissions, refresh/backups, offline reruns and configuration preservation. They
+never authenticate to a real vault or GitHub and do not prove real CLI installation.
+
+The current source tree no longer contains personal identities/public keys, but
+historical commits still do. Before making this repository public, separately clean
+its history or publish a sanitized snapshot with new history. Repository visibility
+and history are not changed by setup.

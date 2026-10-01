@@ -29,8 +29,12 @@ not own it. Do not uninstall, take over or silently upgrade existing tools.
   the approved subset needing mise; working external tools are omitted. The
   latest/missing-only policy remains for mise-managed entries.
 - setup-git owns fixed Workspace identities, Git preferences and GitHub SSH aliases
-  backed by Bitwarden Agent. It deploys public keys only; desktop authorization
-  settings and WSL agent bridges require user setup. No Git version pin or global ignore.
+  with local private/public key pairs restored through Bitwarden CLI. Git metadata
+  comes from a Secure Note; key material comes from SSH key items. Private files
+  use mode 600 and SSH directories mode 700; disable agents for managed aliases.
+  Stage/validate imports before deployment, lock setup-owned sessions and never
+  log key JSON or remove passphrases. Offline reruns reuse the local profile/keys.
+  No Git version pin or global ignore. Rotation backups contain private keys.
 - setup-docker owns OrbStack on macOS and native Engine on Ubuntu/WSL2, plus CLI,
   Compose and Buildx. OrbStack's cask supplies macOS tools; Linux uses official
   Docker APT packages, an exception to common-tool brew/mise ownership. Reuse
