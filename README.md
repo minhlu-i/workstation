@@ -13,9 +13,22 @@ Doctor does not certify a complete development workstation.
 TERM=xterm-256color ./doctor/check.sh
 ```
 
+## First run
+
+1. Obtain this checkout, then run `./setup.sh`. The
+   [installer](setup.sh) runs tools (including missing Homebrew), shell, basic Git,
+   Docker and doctor. Complete any CLT/OrbStack/WSL manual steps it reports, then rerun.
+2. Optionally run `./setup-git/install-personal.sh`. On a first interactive run,
+   choose `new` or `bitwarden`; follow [Git personalization](setup-git/README.md)
+   for key selection, identity and workspace defaults. This is a separate command.
+3. Follow its GitHub public-key/authentication hints, and use
+   `./setup-git/verify-personal.sh` for local personal checks. Doctor continues to
+   assess basic Git only; it does not certify GitHub access.
+
 Run as the intended user, not with sudo. Homebrew's initial installation may need
 sudo; native Docker installation on Ubuntu also uses sudo. Entry points work from any directory.
-No login shell, system shell binary, profile, secrets or terminal settings are changed.
+Basic setup does not change the login shell, system shell binary, login profile,
+secrets or terminal settings.
 
 ## Platforms and package ownership
 
@@ -147,14 +160,9 @@ including personal fragments, and may create normal history/completion caches.
 
 Default Git setup and doctor check only Git and its default branch. Identity and
 SSH are not assessed; doctor explicitly reports personalization as SKIP. Existing
-personal configuration is preserved. Optional personalization supports local
-profiles or Bitwarden, arbitrary workspace identities and optional SSH keys.
-Run `./setup-git/install-personal.sh` to choose `new` or `bitwarden` on the first
-interactive run. `new` asks for username/email and generates a local SSH key;
-`bitwarden` lists SSH keys in a checkbox menu (Space selects, Enter confirms),
-then collects identities/workspaces and creates the selected folders.
-See [setup-git](setup-git/README.md).
-No-source personal reruns stay offline.
+personal configuration is preserved. Use the separate
+[Git personal verifier](setup-git/verify-personal.sh) after optional personalization;
+see [Git setup and recovery](setup-git/README.md).
 Docker runtime checks require the selected local OrbStack/native Engine socket
 to be reachable by the current user. They never pull images or run containers;
 `./setup-docker/verify.sh --tools-only` checks installed tools without probing it.

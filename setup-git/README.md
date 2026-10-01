@@ -61,6 +61,9 @@ the generated public key with GitHub before using SSH:
 cat ~/.ssh/workstation/personal.pub
 ```
 
+New configures the workspace identity path; it does not create that workspace
+directory. Create/clone your repositories beneath it to use the configured identity.
+
 New reuses an existing valid key pair; it never silently overwrites or rotates one.
 Partial/invalid pairs fail with recovery instructions. You can add another account
 while retaining existing accounts, and still enter username/email interactively:
@@ -111,7 +114,8 @@ Account IDs are lowercase slugs, starting with a letter. Any number is supported
 at least one account is required. Each needs name/email. Workspace is a literal
 HOME-relative ASCII directory, defaulting to Workspace/<account-id>. It cannot contain
 absolute paths, traversal, glob characters or overlap another account's workspace.
-Personalization creates identity/configuration files, not workspace directories.
+The advanced local-profile route creates identity/configuration files, not workspace
+directories. The Bitwarden chooser creates its selected workspace directories.
 Existing repo-local identities override the workspace defaults.
 
 Without SSH fields, setup never invokes bw, ssh or ssh-keygen and creates no SSH
@@ -174,6 +178,8 @@ no extra CLI dependency and pages long lists. Cancellation deploys nothing.
 For each selected key, enter GitHub username/Git name, email and a HOME-relative
 workspace. Workspace defaults to Workspace/<key-name-slug>; you can accept the
 suggestion with Enter. Re-selecting a saved item offers its existing values.
+Username/email cannot be reliably inferred from a key, so first selection requires
+entry; previously saved values can be accepted with Enter.
 Setup creates the selected workspace directories and configures Git identities
 for repositories beneath them. Existing repositories are not moved or cloned.
 
@@ -236,6 +242,12 @@ check permissions manually, run ssh -T git@YOUR-ALIAS and inspect the account in
 GitHub's greeting (normally exit code 1), then exercise pull/push. First connection
 may require host-key verification; setup never disables it or downloads unverified
 known_hosts entries. See [OpenSSH configuration](https://man.openbsd.org/ssh_config#IdentityAgent).
+
+Follow the next-step hints printed by the [personal installer](install-personal.sh):
+new gives the public-key viewing command and GitHub registration link; Bitwarden
+reminds you to confirm each restored key remains registered to the intended account.
+Configured SSH aliases also get authentication commands with their expected GitHub
+username. These commands are hints for you to run; setup does not authenticate.
 
 ### Compatibility and recovery
 
