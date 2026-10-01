@@ -26,6 +26,7 @@ expected=$'setup-tools/install.sh \nsetup-shell/install.sh \nsetup-git/install.s
 [[ $(cat "$CALLS") == "$expected" ]]
 grep -q 'Full workstation readiness is not assessed' "$workspace_test_dir/log"
 grep -Fxq 'PLANNED (not checked): setup-workspace' "$workspace_test_dir/log"
+grep -Fxq 'SKIP (not requested): Git personalization; identity and SSH authentication not checked' "$workspace_test_dir/log"
 : > "$CALLS"
 "$fixture/setup-bash-workstation" > /dev/null
 legacy_expected=$'setup-tools/install.sh \nsetup-shell/install.sh --shell bash\nsetup-git/install.sh \nsetup-docker/install.sh \nsetup-tools/verify.sh \nsetup-shell/verify.sh --shell bash\nsetup-git/verify.sh \nsetup-docker/verify.sh '
@@ -47,4 +48,26 @@ for step in setup-tools/verify.sh setup-shell/verify.sh setup-git/verify.sh setu
     (( $(wc -l < "$CALLS") == 4 ))
     grep -q PLANNED "$workspace_test_dir/log"
 done
+# Exercise the real basic Git entry points inside otherwise mocked orchestration.
+# This proves the default root command/doctor work without a vault or SSH setup.
+cp "$root/setup-git/install.sh" "$root/setup-git/verify.sh" "$root/setup-git/common.bash" "$fixture/setup-git/"
+cp "$root/setup-tools/file-operations.bash" "$fixture/setup-tools/"
+export GIT_CONFIG_NOSYSTEM=1
+unset GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS GIT_DIR GIT_WORK_TREE
+mkdir -p "$workspace_test_dir/bin" "$HOME/.ssh"
+cat > "$workspace_test_dir/bin/bw" <<'BLOCK'
+#!/bin/sh
+printf 'unexpected vault access\n' >> "$HOME/vault-calls"
+exit 99
+BLOCK
+chmod +x "$workspace_test_dir/bin/bw"
+export PATH="$workspace_test_dir/bin:$PATH"
+printf 'existing SSH data\n' > "$HOME/.ssh/config"
+cp "$HOME/.ssh/config" "$workspace_test_dir/ssh-before"
+"$fixture/setup.sh" > "$workspace_test_dir/log"
+[[ $(git config --global init.defaultBranch) == main ]]
+! git config --global --get user.name
+[[ ! -e $HOME/vault-calls && ! -e $HOME/Workspace && ! -e $HOME/.config/git ]]
+cmp "$workspace_test_dir/ssh-before" "$HOME/.ssh/config"
+grep -Fxq 'SKIP (not requested): Git personalization; identity and SSH authentication not checked' "$workspace_test_dir/log"
 printf 'PASS dispatch order, cwd/spaces, fail-fast status and doctor aggregation (test doubles)\n'

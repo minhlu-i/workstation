@@ -23,7 +23,7 @@ Host unrelated
 CONFIG
 cp "$HOME/.gitconfig" "$work/original-git"
 cp "$HOME/.ssh/config" "$work/original-ssh"
-bash "$root/setup-git/install.sh"
+bash "$root/setup-git/install-personal.sh"
 [[ $(git config --global alias.custom) == 'status -sb' ]]
 ! git config --global --get core.excludesfile
 [[ -f $HOME/.gitignore_global ]]
@@ -32,7 +32,7 @@ backups="$HOME/.local/state/workstation/bash-workstation/backups"
 first=$(find "$backups" -mindepth 1 -maxdepth 1 -type d)
 cmp "$work/original-git" "$first/.gitconfig"
 cmp "$work/original-ssh" "$first/.ssh/config"
-bash "$root/setup-git/install.sh" --configure-only >/dev/null
+bash "$root/setup-git/install-personal.sh" --configure-only >/dev/null
 [[ $(find "$backups" -mindepth 1 -maxdepth 1 -type d | wc -l) == 1 ]]
 for account in personal s5tech; do
     dir="$HOME/Workspace/$account/test"
@@ -48,22 +48,22 @@ for account in personal s5tech; do
 done
 git init -q "$HOME/outside"
 if git -C "$HOME/outside" var GIT_AUTHOR_IDENT >/dev/null 2>&1; then exit 1; fi
-bash "$root/setup-git/verify.sh"
+bash "$root/setup-git/verify-personal.sh"
 ssh -G -F "$HOME/.ssh/config" gh-p 2>/dev/null | grep -Fxq 'identityagent none'
 # Offline reruns never contact the vault, even when no CLI session is available.
 cp "$VAULT_CALLS" "$work/calls-before"
 unset BW_SESSION
-bash "$root/setup-git/install.sh" --configure-only >/dev/null
-bash "$root/setup-git/install.sh" >/dev/null
+bash "$root/setup-git/install-personal.sh" --configure-only >/dev/null
+bash "$root/setup-git/install-personal.sh" >/dev/null
 cmp "$VAULT_CALLS" "$work/calls-before"
 # Additional identities from a wildcard must not silently bypass the selected key.
 printf '\nHost *\n    IdentityFile ~/.ssh/unexpected\n' >> "$HOME/.ssh/config"
-if bash "$root/setup-git/verify.sh" --config-only > "$work/failure" 2>&1; then exit 1; fi
+if bash "$root/setup-git/verify-personal.sh" --config-only > "$work/failure" 2>&1; then exit 1; fi
 grep -q 'Unexpected additional/replaced IdentityFile' "$work/failure"
 # A malformed Git root must fail before deploying any new managed config.
 export HOME="$work/broken" XDG_CONFIG_HOME="$work/broken/.config"
 mkdir -p "$HOME"
 printf '[broken\n' > "$HOME/.gitconfig"
-if bash "$root/setup-git/install.sh" --configure-only >/dev/null 2>&1; then exit 1; fi
+if bash "$root/setup-git/install-personal.sh" --configure-only >/dev/null 2>&1; then exit 1; fi
 [[ ! -e $HOME/.ssh && ! -e $HOME/.config/git ]]
 printf 'PASS Git config, identities, rewrites, SSH selection, preservation, backups and failure diagnostics\n'

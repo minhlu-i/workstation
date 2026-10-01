@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
+work=$(mktemp -d)
+trap 'rm -rf -- "$work"' EXIT
+export GIT_CONFIG_NOSYSTEM=1 PYTHONDONTWRITEBYTECODE=1
+unset GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS GIT_DIR GIT_WORK_TREE
+mkdir -p "$work/bin"
+for command in bw jq ssh ssh-keygen brew mise curl; do
+    cat > "$work/bin/$command" <<'BLOCK'
+#!/bin/sh
+printf '%s\n' "${0##*/} $*" >> "$FORBIDDEN_CALLS"
+exit 99
+BLOCK
+    chmod +x "$work/bin/$command"
+done
+export PATH="$work/bin:$PATH" FORBIDDEN_CALLS="$work/forbidden"
+new_home() {
+    export HOME="$work/$1" XDG_CONFIG_HOME="$work/$1/.config"
+    mkdir -p "$HOME"
+}
+snapshot() {
+    python3 - "$HOME" <<'PY'
+import hashlib,os,stat,sys
+from pathlib import Path
+root=Path(sys.argv[1])
+for p in sorted(root.rglob('*')):
+    mode=stat.S_IMODE(p.lstat().st_mode)
+    data=os.readlink(p) if p.is_symlink() else hashlib.sha256(p.read_bytes()).hexdigest() if p.is_file() else 'directory'
+    print(str(p.relative_to(root)),oct(mode),data)
+PY
+}
+new_home 'fresh with spaces'
+bash "$root/setup-git/install.sh"
+[[ $(git config --global init.defaultBranch) == main ]]
+[[ ! -e $HOME/.ssh && ! -e $HOME/Workspace && ! -e $HOME/.config ]]
+! git config --global --get user.name
+! git config --global --get user.email
+! git config --global --get user.useConfigOnly
+[[ $(git config --global --list | wc -l) == 1 ]]
+before=$(snapshot)
+bash "$root/setup-git/install.sh" --configure-only >/dev/null
+bash "$root/setup-git/verify.sh" >/dev/null
+bash "$root/setup-git/verify.sh" --config-only >/dev/null
+[[ $(snapshot) == "$before" ]]
+git init -q "$HOME/repo"
+[[ $(git -C "$HOME/repo" symbolic-ref --short HEAD) == main ]]
+# Existing personal preferences and even incomplete personal data are irrelevant.
+new_home existing
+mkdir -p "$HOME/.ssh/workstation" "$HOME/.config/git" "$HOME/Workspace/personal"
+cat > "$HOME/.gitconfig" <<'CONFIG'
+[init]
+    defaultBranch = develop
+[user]
+    name = Existing User
+    email = existing@example.invalid
+    useConfigOnly = true
+[credential]
+    helper = existing-helper
+[url "git@custom:owner/"]
+    insteadOf = git@github.com:owner/
+[includeIf "gitdir:~/Workspace/personal/"]
+    path = ~/Workspace/personal/.gitconfig
+CONFIG
+printf '[user]\nname = Workspace User\n' > "$HOME/Workspace/personal/.gitconfig"
+printf 'existing SSH config (not parsed by basic setup)\n' > "$HOME/.ssh/config"
+printf 'existing key (not parsed by basic setup)\n' > "$HOME/.ssh/workstation/personal"
+printf 'invalid JSON (not parsed by basic setup)\n' > "$HOME/.config/git/workstation-profile.json"
+chmod 600 "$HOME/.gitconfig" "$HOME/.ssh/workstation/personal"
+before=$(snapshot)
+bash "$root/setup-git/install.sh" >/dev/null
+bash "$root/setup-git/verify.sh" >/dev/null
+[[ $(snapshot) == "$before" ]]
+# Adding the absent default branch preserves unrelated settings and file mode.
+git config --global --unset init.defaultBranch
+cp "$HOME/.gitconfig" "$work/original"
+bash "$root/setup-git/install.sh" >/dev/null
+[[ $(git config --global user.name) == 'Existing User' ]]
+[[ $(git config --global credential.helper) == existing-helper ]]
+module="$root/setup-git"; source "$module/common.bash"
+[[ $(file_mode "$HOME/.gitconfig") == 600 ]]
+backup=$(find "$HOME/.local/state" -type f -name .gitconfig)
+cmp "$work/original" "$backup"
+[[ ! -s $FORBIDDEN_CALLS ]]
+new_home malformed
+printf '[broken\n' > "$HOME/.gitconfig"
+before=$(snapshot)
+if bash "$root/setup-git/install.sh" > "$work/error" 2>&1; then exit 1; fi
+grep -q 'Invalid global Git configuration' "$work/error"
+[[ $(snapshot) == "$before" ]]
+new_home invalid-branch
+git config --global init.defaultBranch 'not a branch'
+before=$(snapshot)
+if bash "$root/setup-git/install.sh" > "$work/error" 2>&1; then exit 1; fi
+grep -q 'Invalid init.defaultBranch' "$work/error"
+[[ $(snapshot) == "$before" ]]
+new_home missing-config
+if bash "$root/setup-git/verify.sh" > "$work/error" 2>&1; then exit 1; fi
+grep -q 'default branch missing' "$work/error"
+[[ -z $(ls -A "$HOME") ]]
+new_home symlink-config
+printf '[user]\nname = Preserve Me\n' > "$work/linked-config"
+ln -s "$work/linked-config" "$HOME/.gitconfig"
+before=$(snapshot)
+if bash "$root/setup-git/install.sh" > "$work/error" 2>&1; then exit 1; fi
+grep -q 'non-regular' "$work/error"
+[[ $(snapshot) == "$before" ]]
+for script in install verify; do
+    bash "$root/setup-git/$script.sh" --help >/dev/null
+    if bash "$root/setup-git/$script.sh" --unknown >/dev/null 2>&1; then exit 1; fi
+done
+new_home missing-git
+printf '#!/bin/sh\nexit 1\n' > "$work/bin/git"
+chmod +x "$work/bin/git"
+if bash "$root/setup-git/install.sh" > "$work/error" 2>&1; then exit 1; fi
+grep -q 'Install Git through setup-tools' "$work/error"
+[[ -z $(ls -A "$HOME") && ! -s $FORBIDDEN_CALLS ]]
+printf 'PASS basic Git, no vault/SSH/identity access, preservation, backups, reruns and failure diagnostics\n'

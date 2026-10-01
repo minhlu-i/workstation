@@ -1,12 +1,26 @@
 # Shared setup-git paths and deterministic SSH configuration.
 fail() { printf 'setup-git: %s\n' "$*" >&2; exit 1; }
-check_environment() {
+check_git_prerequisites() {
     [[ ${HOME-} == /* && $HOME != *$'\n'* && $HOME != *'"'* && $HOME != *'$'* && $HOME != *'%'* && $HOME != *'\'* ]] || fail 'HOME must be an absolute literal path without SSH expansion characters.'
     [[ ${XDG_CONFIG_HOME:-$HOME/.config} == "$HOME/.config" ]] || fail 'XDG_CONFIG_HOME must be ~/.config.'
     [[ -z ${GIT_CONFIG_GLOBAL-} && -z ${GIT_CONFIG_SYSTEM-} && -z ${GIT_CONFIG_COUNT-} && -z ${GIT_CONFIG_PARAMETERS-} ]] || fail 'Unset Git config overrides before setup/verification.'
-    command -v git >/dev/null && git --version >/dev/null || fail 'Install Git through setup-tools first.'
+    command -v git >/dev/null || fail 'Install Git through setup-tools first.'
+}
+check_git_environment() {
+    check_git_prerequisites
+    validate_global_git_config
+    git --version >/dev/null || fail 'Install Git through setup-tools first.'
+}
+check_environment() {
+    check_git_prerequisites
+    git --version >/dev/null || fail 'Install Git through setup-tools first.'
     command -v ssh >/dev/null && command -v ssh-keygen >/dev/null || fail 'OpenSSH client is required.'
     command -v jq >/dev/null || fail 'Install jq through setup-tools first.'
+}
+validate_global_git_config() {
+    if [[ -e $HOME/.gitconfig || -L $HOME/.gitconfig || -e ${XDG_CONFIG_HOME:-$HOME/.config}/git/config || -L ${XDG_CONFIG_HOME:-$HOME/.config}/git/config ]]; then
+        git config --global --includes --list >/dev/null || fail 'Invalid global Git configuration.'
+    fi
 }
 check_local_paths() {
     local path

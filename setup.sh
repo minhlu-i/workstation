@@ -2,7 +2,7 @@
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 if [[ ${1-} == --help && $# == 1 ]]; then
-    printf 'Usage: setup.sh\nInstalls tools, shell, Git and Docker, then runs doctor.\n'
+    printf 'Usage: setup.sh [--shell bash|zsh]\nInstalls tools, shell, basic Git and Docker, then runs doctor.\nGit identity, SSH and vault configuration are not performed.\n'
     exit 0
 fi
 shell_args=()
