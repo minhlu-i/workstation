@@ -1,0 +1,4 @@
+        *) command git "${workstation_arguments[@]}"; return $? ;;
+    esac
+    GIT_SSH_COMMAND="$workstation_ssh" command git "${workstation_arguments[@]}"
+}

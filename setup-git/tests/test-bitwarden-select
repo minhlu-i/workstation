@@ -38,7 +38,7 @@ printf '1\n\n\n\n\n' | install bitwarden >/dev/null
 ! grep -q '^get item s5tech$' "$VAULT_CALLS"
 [[ $(git -C "$HOME/Workspace/personal/repo" config user.name) == 'Personal Author' ]]
 [[ $(jq -r .accounts.personal.githubOwner "$HOME/.config/git/workstation-profile.json") == personal-user ]]
-[[ $(git -C "$HOME/Workspace/personal/repo" ls-remote --get-url git@github.com:personal-user/repo) == git@gh-personal:personal-user/repo ]]
+[[ $(git -C "$HOME/Workspace/personal/repo" ls-remote --get-url git@github.com:personal-user/repo) == git@github.com:personal-user/repo ]]
 # Duplicate/unusual names get distinct stable account IDs; numbers select exact IDs.
 new_home duplicates
 jq 'map(if .type == 5 then .name="Same / key" else . end)' "$VAULT_FIXTURE/list.json" > "$work/duplicates.json"

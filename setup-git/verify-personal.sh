@@ -20,6 +20,10 @@ trap 'rm -rf -- "$work"' EXIT
 normalize_profile "$profile" "$work/profile.json"
 profile="$work/profile.json"
 check_personal_paths "$profile"
+render_workspace_shell "$profile" "$work/workspace-shell"
+for shell in bash zsh; do
+    cmp -s "$work/workspace-shell" "$HOME/.config/$shell/rc.d/40-git-workspace.$shell" || fail "Managed $shell Git workspace fragment missing or changed; rerun install-personal.sh."
+done
 render_git "$profile" "$work/gitconfig"
 cmp -s "$work/gitconfig" "$HOME/.config/git/workstation.gitconfig" || fail 'Managed Git config missing or changed; rerun install-personal.sh.'
 git config --global --get-all include.path | grep -Fxq '~/.config/git/workstation.gitconfig' || fail 'Missing global Git include.'

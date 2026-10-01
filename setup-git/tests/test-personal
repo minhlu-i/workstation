@@ -89,7 +89,7 @@ cmp "$VAULT_FIXTURE/personal" "$HOME/.ssh/workstation/solo"
 [[ $(ssh -G -F "$HOME/.ssh/config" gh-solo 2>/dev/null | awk '$1=="identityagent" {print $2}') == none ]]
 git init -q "$HOME/Workspace/solo/example"
 [[ $(git -C "$HOME/Workspace/solo/example" config user.name) == Solo ]]
-[[ $(git -C "$HOME/Workspace/solo/example" ls-remote --get-url git@github.com:example-owner/repo) == git@gh-solo:example-owner/repo ]]
+[[ $(git -C "$HOME/Workspace/solo/example" ls-remote --get-url git@github.com:example-owner/repo) == git@github.com:example-owner/repo ]]
 # Metadata/source references do not require the original source file on reruns.
 mv "$VAULT_FIXTURE/personal" "$work/source-key"
 install >/dev/null

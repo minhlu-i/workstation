@@ -37,12 +37,13 @@ bash "$root/setup-git/install-personal.sh" --configure-only >/dev/null
 for account in personal s5tech; do
     dir="$HOME/Workspace/$account/test"
     git init -q "$dir"
-    name=fixture-personal; org=fixture-personal; alias=gh-p
-    if [[ $account == s5tech ]]; then name=fixture-work; org=fixture-work; alias=gh-s5; fi
+    name=fixture-personal; org=99techteam
+    if [[ $account == s5tech ]]; then name=fixture-work; org=99techteam; fi
     [[ $(git -C "$dir" config user.name) == "$name" ]]
+    [[ $(git -C "$dir" config core.sshCommand) == *"/.ssh/workstation/$account'"* ]]
     [[ $(git -C "$dir" symbolic-ref --short HEAD) == main ]]
     for url in "git@github.com:$org/example" "ssh://git@github.com/$org/example"; do
-        [[ $(git -C "$dir" ls-remote --get-url "$url") == "git@$alias:$org/example" ]]
+        [[ $(git -C "$dir" ls-remote --get-url "$url") == "$url" ]]
     done
     [[ $(git -C "$dir" ls-remote --get-url "https://github.com/$org/example") == "https://github.com/$org/example" ]]
 done
@@ -66,4 +67,55 @@ mkdir -p "$HOME"
 printf '[broken\n' > "$HOME/.gitconfig"
 if bash "$root/setup-git/install-personal.sh" --configure-only >/dev/null 2>&1; then exit 1; fi
 [[ ! -e $HOME/.ssh && ! -e $HOME/.config/git ]]
-printf 'PASS Git config, identities, rewrites, SSH selection, preservation, backups and failure diagnostics\n'
+printf 'PASS Git config, identities, workspace SSH selection, preservation, backups and failure diagnostics\n'
+
+# Exercise actual clone transport selection before a repository exists; no network.
+mkdir -p "$work/transport-bin"
+cat > "$work/transport-bin/ssh" <<'DOUBLE'
+#!/bin/sh
+printf '%s\n' "$@" > "$SSH_ARGUMENTS"
+exit 1
+DOUBLE
+chmod +x "$work/transport-bin/ssh"
+export SSH_ARGUMENTS="$work/ssh-arguments"
+export PATH="$work/transport-bin:$PATH" GIT_SSH_VARIANT=ssh
+export HOME="$work/home with spaces" XDG_CONFIG_HOME="$work/home with spaces/.config"
+mkdir -p "$HOME/Workspace/s5tech-empty"
+# Existing repositories also select the key without a shell function (IDE path).
+for account in personal s5tech; do
+    git -C "$HOME/Workspace/$account/test" ls-remote git@github.com:99techteam/example.git > "$work/transport-output" 2>&1 && exit 1
+    grep -Fxq "$HOME/.ssh/workstation/$account" "$SSH_ARGUMENTS"
+done
+for interpreter in bash zsh; do
+    if ! command -v "$interpreter" >/dev/null; then
+        printf 'SKIP %s workspace wrapper runtime (interpreter unavailable)\n' "$interpreter"
+        continue
+    fi
+    for account in personal s5tech; do
+        for form in cwd dash-c; do
+            "$interpreter" -c '
+                source "$HOME/.config/'"$interpreter"'/rc.d/40-git-workspace.'"$interpreter"'"
+                if [ "$2" = cwd ]; then
+                    cd "$HOME/Workspace/$1"
+                    git clone git@github.com:99techteam/example.git transport-check
+                else
+                    cd "$HOME"
+                    git -C Workspace -C "$1" clone git@github.com:99techteam/example.git transport-check
+                fi
+            ' check "$account" "$form" > "$work/transport-output" 2>&1 && exit 1
+            grep -Fxq "$HOME/.ssh/workstation/$account" "$SSH_ARGUMENTS"
+            grep -Fxq git@github.com "$SSH_ARGUMENTS"
+            grep -Fq 99techteam/example.git "$SSH_ARGUMENTS"
+        done
+    done
+    # Explicit overrides survive the wrapper; outside workspaces get no override.
+    "$interpreter" -c '
+        source "$HOME/.config/'"$interpreter"'/rc.d/40-git-workspace.'"$interpreter"'"
+        cd "$HOME/Workspace/s5tech"
+        GIT_SSH_COMMAND=custom git -c "alias.transport=!printenv GIT_SSH_COMMAND" transport
+        cd "$HOME/Workspace/s5tech-empty"
+        git -c "alias.transport=!printenv GIT_SSH_COMMAND" transport || :
+    ' > "$work/override"
+    [[ $(cat "$work/override") == custom ]]
+done
+printf 'PASS clone transport selects workspace keys for organization URLs and repeated -C; explicit overrides preserved\n'

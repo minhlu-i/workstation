@@ -115,6 +115,7 @@ if ! git config --global --includes --get init.defaultBranch >/dev/null; then
     git config --file "$work/gitconfig" init.defaultBranch main
 fi
 render_git "$work/profile.json" "$work/git-managed"
+render_workspace_shell "$work/profile.json" "$work/workspace-shell"
 for account in $(accounts "$work/profile.json"); do
     render_identity "$work/profile.json" "$account" "$work/$account.gitconfig"
 done
@@ -147,6 +148,9 @@ if [[ $create_workspaces == 1 ]]; then
         mkdir -p "$HOME/$(field "$work/profile.json" "$account" workspace)"
     done < "$work/selected-accounts"
 fi
+for shell in bash zsh; do
+    write_owned "$work/workspace-shell" "$HOME/.config/$shell/rc.d/40-git-workspace.$shell" ".config/$shell/rc.d/40-git-workspace.$shell"
+done
 write_owned "$work/profile.json" "$profile" .config/git/workstation-profile.json 600
 write_owned "$work/git-managed" "$HOME/.config/git/workstation.gitconfig" .config/git/workstation.gitconfig
 for account in $(accounts "$work/profile.json"); do
@@ -170,6 +174,7 @@ mode=600; [[ ! -f $HOME/.gitconfig ]] || mode=$(file_mode "$HOME/.gitconfig")
 write_owned "$work/gitconfig" "$HOME/.gitconfig" .gitconfig "$mode"
 bash "$module/verify-personal.sh" --config-only
 printf 'Git personalization complete. Daily Git uses local configuration and keys.\n'
+printf 'Open a new managed Bash/Zsh terminal, or source ~/.config/bash/rc.d/40-git-workspace.bash (Zsh: ~/.config/zsh/rc.d/40-git-workspace.zsh).\n'
 if [[ $source_mode == new ]]; then
     printf '\nNext: register this public key with the intended GitHub account:\n  https://github.com/settings/keys\n'
     printf '  cat %q\n' "$HOME/.ssh/workstation/$new_account.pub"
