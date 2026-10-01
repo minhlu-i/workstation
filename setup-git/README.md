@@ -35,132 +35,254 @@ Run `./setup-git/tests/test-basic` for isolated fresh/existing HOME, no-vault/SS
 calls, preservation, backup, rerun and failure checks. Python 3 is used only for
 file/permission snapshots in this test.
 
-## Saved personal workflow
+## Optional Git personalization
 
-The previous vault/local-key implementation is preserved in separate entry points
-for the next personalization phase. It still uses exactly personal/s5tech accounts;
-its generic optional-profile interface has not been implemented. Default setup and
-doctor do not invoke it. Only run these commands when explicitly restoring personal
-data:
+Default setup and doctor never invoke personalization. Choose it explicitly after
+basic setup. The usual choices are new (create a local key/identity) or bitwarden
+(restore existing data). No hand-written local JSON is needed for new.
 
 ```bash
-./setup-git/install-personal.sh                   # restore/reuse personal data
-./setup-git/install-personal.sh --refresh         # import vault updates
-./setup-git/install-personal.sh --configure-only  # reuse local profile/key pairs
-./setup-git/verify-personal.sh                    # check identity and local keys
+./setup-git/install-personal.sh            # first run: choose new / bitwarden
+./setup-git/install-personal.sh new        # enter username and email
+./setup-git/install-personal.sh bitwarden  # restore from the vault
 ```
 
-## Prepare the vault once
+On a first interactive run without saved data, the command asks which mode to use.
+New asks for your GitHub username and Git email, sets the username as Git's author
+name, and runs ssh-keygen to generate an Ed25519 key with your email as its comment.
+The key has no passphrase, matching the password-free local-key workflow.
+Username also selects the GitHub owner whose SSH URLs are rewritten to the alias.
 
-Keep your existing **SSH key** items `personal` and `s5tech`, each with its private
-and public key. Create a separate **Secure Note** named `workstation-git` whose
-notes contain the JSON below, replacing the example identity/owner values:
+Defaults are account personal, workspace ~/Workspace/personal, alias gh-personal
+and key ~/.ssh/workstation/personal. Configuration is saved automatically. Register
+the generated public key with GitHub before using SSH:
+
+```bash
+cat ~/.ssh/workstation/personal.pub
+```
+
+New reuses an existing valid key pair; it never silently overwrites or rotates one.
+Partial/invalid pairs fail with recovery instructions. You can add another account
+while retaining existing accounts, and still enter username/email interactively:
+
+```bash
+./setup-git/install-personal.sh new --account work --workspace Projects/Work
+# Automation only: supply the values and disable prompts.
+./setup-git/install-personal.sh new --username YOUR-USERNAME --email you@example.com --no-input
+```
+
+--github-owner can override the owner when the chosen Git author name differs.
+After setup, no-mode reruns reuse saved configuration/key pairs offline. Without
+saved data and without a terminal, explicitly select new or bitwarden; --no-input
+fails if new is missing username/email or the vault needs login/unlock.
+
+Git and jq are required; OpenSSH only for configured SSH keys, and bw only for
+Bitwarden. Advanced profiles can define any number of workspace identities and
+omit SSH entirely. Account names and company mappings are not fixed.
+
+### Advanced local identity profile
+
+Copy [the example](files/profile.example.json) to a private location outside this
+repo, edit your name/email and choose the workspace containing your repositories:
+
+```bash
+cp setup-git/files/profile.example.json ~/workstation-git.json
+# Edit ~/workstation-git.json, then:
+./setup-git/install-personal.sh --profile ~/workstation-git.json
+./setup-git/verify-personal.sh
+```
+
+The version-2 JSON format is:
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "accounts": {
-    "personal": {
-      "name": "YOUR_PERSONAL_NAME",
-      "email": "personal@example.com",
-      "githubOwner": "YOUR-PERSONAL-GITHUB-OWNER",
-      "sshKeyItem": "personal"
-    },
-    "s5tech": {
-      "name": "YOUR_WORK_NAME",
-      "email": "work@example.com",
-      "githubOwner": "YOUR-WORK-GITHUB-OWNER",
-      "sshKeyItem": "s5tech"
+    "developer": {
+      "name": "YOUR_NAME",
+      "email": "you@example.com",
+      "workspace": "Projects/My Code"
     }
   }
 }
 ```
 
-The Secure Note stores Git metadata, not keys. `sshKeyItem` accepts an exact item
-ID or a unique item name. Duplicate names fail; use IDs to resolve ambiguity.
-Override the note lookup with `WORKSTATION_GIT_PROFILE_ITEM=<name-or-id>`.
-No shell code from the vault is evaluated.
+Account IDs are lowercase slugs, starting with a letter. Any number is supported;
+at least one account is required. Each needs name/email. Workspace is a literal
+HOME-relative ASCII directory, defaulting to Workspace/<account-id>. It cannot contain
+absolute paths, traversal, glob characters or overlap another account's workspace.
+Personalization creates identity/configuration files, not workspace directories.
+Existing repo-local identities override the workspace defaults.
 
-Choose the correct Bitwarden server before login (for example
-`bw config server https://vault.bitwarden.eu` for EU accounts). First installation
-prompts through bw for login/unlock. It synchronizes the vault, stages only the
-profile and two key pairs, and validates everything before deployment. A supplied
-`BW_SESSION` can be used; setup preserves caller-owned sessions. Sessions created
-by setup are locked on success/failure, and decrypted staging files are removed.
-Failed lock cleanup returns failure with instructions to run `bw lock` yourself.
-For API-key authentication, run `bw login --apikey` first, then setup prompts for
-unlock. Login/unlock may require interactive input; credentials are never embedded
-in commands or configuration. See [Bitwarden CLI](https://bitwarden.com/help/cli/).
+Without SSH fields, setup never invokes bw, ssh or ssh-keygen and creates no SSH
+files. This is enough to identify your commits; remote authentication remains your
+existing HTTPS/credential-helper configuration. user.useConfigOnly=true prevents
+Git from guessing identities; existing explicit global or repo-local identities
+remain effective. Your existing default branch is preserved; an unset branch is
+initialized to main. Editor, signing, pull/rebase and credential settings survive.
 
-## Local keys and daily use
+### Local SSH keys
 
-Keys are written to `~/.ssh/workstation/{personal,s5tech}` with mode 600, alongside
-`.pub` files. The SSH directories have mode 700. `gh-p` and `gh-s5` explicitly set
-`IdentityAgent none` and select their local private key with `IdentitiesOnly yes`.
-Git can then use the keys without a Bitwarden session, Desktop or WSL agent bridge.
-The matching public keys must already be registered with the intended GitHub accounts.
+For an account that needs GitHub SSH, add privateKeyFile and optionally
+publicKeyFile, sshAlias and githubOwner:
 
-This flow requires valid, matching keys **without a passphrase** for password-free
-SSH. Encrypted or invalid private keys fail before deployment; setup never removes
-passphrases. Anyone able to read an unencrypted private key can use it. Protect the
-machine/account and its backups; vault locking does not disable a restored local key.
-Key rotation needs both an updated GitHub public key and `--refresh` on each machine.
-See [OpenSSH identity configuration](https://man.openbsd.org/ssh_config#IdentityAgent).
-
-```bash
-ssh -T git@gh-p
-ssh -T git@gh-s5
+```json
+{
+  "version": 2,
+  "accounts": {
+    "developer": {
+      "name": "YOUR_NAME",
+      "email": "you@example.com",
+      "privateKeyFile": "~/.ssh/id_ed25519",
+      "sshAlias": "gh-developer",
+      "githubOwner": "YOUR-GITHUB-OWNER"
+    }
+  }
+}
 ```
 
-Check the account in GitHub's successful greeting (normally exit code 1), then
-exercise pull/push. Verification is local: it does not contact GitHub or prove
-account permissions. First connection may ask you to verify the server host key;
-setup never disables host verification or downloads unverified known_hosts entries.
+Run the same --profile command. Local key paths are absolute, ~/ relative, or
+HOME-relative. Public key is derived when publicKeyFile is omitted. Setup stages
+and validates the pair, then copies it to ~/.ssh/workstation/<account-id> and .pub.
+Original files are not modified. These local-source imports never invoke bw.
 
-## Identity, ownership and recovery
+SSH aliases default to gh-<account-id>; alias and githubOwner values must be unique.
+The account ID config is reserved when SSH is enabled, to avoid its managed file.
+SSH currently targets github.com as user git. githubOwner is optional: when present,
+Git rewrites that owner's standard GitHub SSH URLs through the alias. Without it,
+use git@<ssh-alias>:OWNER/REPO directly. HTTPS URLs stay HTTPS.
 
-`~/Workspace/personal/` and `~/Workspace/s5tech/` receive identities from the
-profile. New repos default to main; `user.useConfigOnly=true` prevents guessed
-identities outside these workspaces. Explicit repo-local identity wins. SSH URLs
-for each configured GitHub owner map to gh-p/gh-s5; HTTPS stays HTTPS. Pull/rebase,
-signing, editor and credential helper settings remain user-owned.
+Managed aliases use IdentityAgent none and IdentitiesOnly yes. Keys must be valid
+and unencrypted for password-free daily use; encrypted keys fail, and setup never
+removes passphrases. Private keys have mode 600 and SSH directories mode 700.
+Anyone able to read an unencrypted key can use it; vault locking cannot revoke a
+restored local key. Register its public key with GitHub separately.
 
-Local profile: `~/.config/git/workstation-profile.json` (mode 600). This contains
-metadata/key references, not private keys. Managed files also include
-`~/.config/git/workstation.gitconfig`, each Workspace `.gitconfig`, and
-`~/.ssh/workstation/{config,personal,personal.pub,s5tech,s5tech.pub}`. Root Git/SSH
-files gain managed includes. Existing standalone gh-p/gh-s5 blocks are replaced,
-including legacy Bitwarden-agent definitions; unrelated blocks survive. Additional
-IdentityFile entries from wildcard blocks fail verification rather than selecting
-another key silently. Symlinked managed files and configuration parents are refused.
-The known experimental ~/.gitignore_global reference is removed; the file remains.
+### Bitwarden source
 
-Default reruns reuse local profile/key pairs and do not access Bitwarden. Offline
-configure-only repairs configuration/permissions but cannot restore missing or invalid
-key material; use a normal install or --refresh. Neither mode changes vault contents.
+Run the chooser; no Secure Note or hand-written profile is required:
+
+```bash
+./setup-git/install-personal.sh bitwarden
+```
+
+After login/unlock and sync, setup counts and lists only non-deleted **SSH key**
+items. In a terminal, use arrows to move, Space to select/unselect multiple keys,
+Enter to confirm, a to select all, or Esc to cancel. The native checkbox menu needs
+no extra CLI dependency and pages long lists. Cancellation deploys nothing.
+
+For each selected key, enter GitHub username/Git name, email and a HOME-relative
+workspace. Workspace defaults to Workspace/<key-name-slug>; you can accept the
+suggestion with Enter. Re-selecting a saved item offers its existing values.
+Setup creates the selected workspace directories and configures Git identities
+for repositories beneath them. Existing repositories are not moved or cloned.
+
+Key names become safe account IDs; duplicate names get unique suffixes. The chooser
+shows item IDs, and imports use exact IDs, so duplicate names are unambiguous. Only
+selected keys are fetched. Existing unselected accounts remain configured using
+local keys. Listing stores only names/IDs in private staging; decrypted full list
+items, private key fields and session tokens are never printed or persisted there.
+Selected key pairs are staged/validated before any workspace/config is deployed.
+
+Choose the correct server before login, for example bw config server
+https://vault.bitwarden.eu. Setup prompts through bw for login/unlock when needed.
+For API-key authentication, run bw login --apikey first. A caller-provided
+BW_SESSION is preserved; sessions created by setup are locked on success/failure,
+including cancellation. Failed locking returns instructions to run bw lock manually.
+Credentials and decrypted key JSON are never evaluated as shell code. The
+[Bitwarden CLI](https://bitwarden.com/help/cli/) exposes SSH keys as type-5 items.
+
+--no-input cannot run the chooser. To refresh already selected keys without prompts,
+provide an unlocked CLI session and use --refresh --no-input. Saved item IDs and
+identities are reused. Local-only accounts remain offline during that refresh.
+
+#### Advanced explicit Secure Note import
+
+For existing installations/automation, you can still explicitly select a Secure
+Note containing version-1/2 profile JSON with sshKeyItem references:
+
+```bash
+./setup-git/install-personal.sh bitwarden --profile-item workstation-git
+./setup-git/install-personal.sh bitwarden --profile-item MY-NOTE-ID --no-input
+```
+
+This bypasses the chooser. WORKSTATION_GIT_PROFILE_ITEM also explicitly selects a
+note; the CLI option takes precedence and the variable is ignored outside Bitwarden
+mode. An identity-only account can omit SSH fields. Item references accept a unique
+name or exact ID; ambiguous names fail. These profiles cannot use local key-file
+paths. Metadata belongs in the Secure Note, and keys remain separate SSH key items.
+
+### Rerun, refresh and verification
+
+```bash
+./setup-git/install-personal.sh                   # reuse saved data offline
+./setup-git/install-personal.sh --configure-only  # same offline behavior
+./setup-git/install-personal.sh --profile ~/workstation-git.json  # update local source
+./setup-git/install-personal.sh bitwarden         # choose keys/workspaces again
+./setup-git/install-personal.sh --refresh         # refresh saved vault key IDs
+./setup-git/verify-personal.sh
+```
+
+No-source reruns never implicitly access the vault or reread original key sources.
+A missing local profile/key is an actionable failure. To import again, explicitly
+choose new, bitwarden or an advanced --profile source. Source flags are mutually
+exclusive. --refresh reuses saved references; an explicitly selected note refreshes
+its metadata too. Without saved data, --refresh opens the chooser.
+
+Verification is local and read-only with respect to deployed configuration. It
+checks saved identities, managed includes and any configured key pairs, permissions
+and effective SSH aliases. It never logs into Bitwarden or contacts GitHub. To
+check permissions manually, run ssh -T git@YOUR-ALIAS and inspect the account in
+GitHub's greeting (normally exit code 1), then exercise pull/push. First connection
+may require host-key verification; setup never disables it or downloads unverified
+known_hosts entries. See [OpenSSH configuration](https://man.openbsd.org/ssh_config#IdentityAgent).
+
+### Compatibility and recovery
+
+Version-1 profiles are normalized to version 2, retaining the previous personal
+and s5tech workspace paths and gh-p/gh-s5 aliases. No vault conversion is required.
+Current identities live in ~/.config/git/workstation-identities/<id>.gitconfig;
+old Workspace .gitconfig files are retained but no longer included by managed
+configuration. Names are treated generically in version-2 profiles.
+
+The saved profile ~/.config/git/workstation-profile.json has mode 600 and contains
+metadata/source references, never private keys. Unknown fields are discarded.
+Global Git/SSH files gain managed includes; unrelated content survives. Single-host
+blocks matching selected or previously managed aliases are replaced. Wildcard
+IdentityFile additions fail verification rather than silently selecting other keys.
+Symlinked managed files/parents and non-default XDG/Git overrides are refused.
+
+Removing an account or its SSH fields regenerates managed includes and deactivates
+its managed alias. Old keys/identity files remain on disk for manual recovery and
+are never deleted automatically. Unrelated SSH blocks remain effective. Replacing
+a profile therefore does not delete credentials.
 
 Changed files are backed up under
-`~/.local/state/workstation/bash-workstation/backups/`. **Rotation backups contain
-old private keys**, with mode 600 in protected newly created directories. Identical
-reruns create no backups. Installation is fail-fast, not transactional: fix the
-reported condition and rerun. Restore home-relative files from the printed backup
-folder when needed; never commit the deployed profile, keys or backups.
+~/.local/state/workstation/bash-workstation/backups/. Rotation backups contain old
+private keys with mode 600 in protected directories. Identical reruns create no
+backups. Installation is fail-fast, not transactional: fix the reported condition
+and rerun, or restore home-relative files from the printed backup folder. Never
+commit deployed profiles, private keys or backups. Rotation also requires updating
+GitHub's registered public key.
 
 ## Tests and publication
 
 ```bash
+./setup-git/tests/test-basic
+./setup-git/tests/test-new
+./setup-git/tests/test-personal
 ./setup-git/tests/test-configure
 ./setup-git/tests/test-bitwarden
-./setup-tools/tests/test-providers
+./setup-git/tests/test-bitwarden-select
 ./setup-tools/tests/test-dispatch
 ```
 
-Tests use temporary HOME, generated disposable key pairs and an explicit bw double.
-They cover import failures/session cleanup, key matching, passphrase rejection,
-permissions, refresh/backups, offline reruns and configuration preservation. They
-never authenticate to a real vault or GitHub and do not prove real CLI installation.
+Tests use temporary HOME, generated disposable keys and explicit doubles. They
+cover optional sources/dependencies, arbitrary accounts, profile migration,
+identity/key/config preservation, removal, passphrase/pair validation, permissions,
+rotation and session cleanup. They do not authenticate to real vaults/GitHub or
+prove clean-machine installation.
 
-The current source tree no longer contains personal identities/public keys, but
-historical commits still do. Before making this repository public, separately clean
-its history or publish a sanitized snapshot with new history. Repository visibility
-and history are not changed by setup.
+The source tree contains no actual personal identities/public keys, but historical
+commits still do. Before making the repo public, separately clean history or publish
+a sanitized snapshot with new history. Setup never changes repository visibility.

@@ -147,8 +147,14 @@ including personal fragments, and may create normal history/completion caches.
 
 Default Git setup and doctor check only Git and its default branch. Identity and
 SSH are not assessed; doctor explicitly reports personalization as SKIP. Existing
-personal configuration is preserved. The saved explicit personal restoration
-workflow is described in [setup-git](setup-git/README.md).
+personal configuration is preserved. Optional personalization supports local
+profiles or Bitwarden, arbitrary workspace identities and optional SSH keys.
+Run `./setup-git/install-personal.sh` to choose `new` or `bitwarden` on the first
+interactive run. `new` asks for username/email and generates a local SSH key;
+`bitwarden` lists SSH keys in a checkbox menu (Space selects, Enter confirms),
+then collects identities/workspaces and creates the selected folders.
+See [setup-git](setup-git/README.md).
+No-source personal reruns stay offline.
 Docker runtime checks require the selected local OrbStack/native Engine socket
 to be reachable by the current user. They never pull images or run containers;
 `./setup-docker/verify.sh --tools-only` checks installed tools without probing it.
@@ -157,8 +163,11 @@ Tests use temporary homes:
 
 ```bash
 ./setup-git/tests/test-basic             # basic setup; no vault/SSH calls
-./setup-git/tests/test-configure         # saved personal workflow
+./setup-git/tests/test-new               # prompts and local ssh-keygen setup
+./setup-git/tests/test-personal          # optional identities/local keys/sources
+./setup-git/tests/test-configure         # personal configuration and compatibility
 ./setup-git/tests/test-bitwarden         # generated keys and bw double
+./setup-git/tests/test-bitwarden-select  # checkbox selection and workspace mapping
 ./setup-tools/tests/test-providers
 ./setup-tools/tests/test-bootstrap       # OS/sudo/installer doubles
 ./setup-tools/tests/test-configure

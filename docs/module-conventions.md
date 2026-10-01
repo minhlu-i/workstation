@@ -32,9 +32,17 @@ not own it. Do not uninstall, take over or silently upgrade existing tools.
   no global default exists. Reuse existing preferences; never create/update
   identity, SSH or vault files in this path. Basic checks need Git only and doctor
   reports personalization as SKIP. Git installation remains owned by setup-tools.
-  The saved install-personal.sh/verify-personal.sh entry points preserve the prior
-  two-workspace implementation for a future generic personalization phase. They
-  restore Git metadata from a Secure Note and local key pairs from SSH key items.
+  The optional install-personal.sh/verify-personal.sh entry points accept arbitrary
+  workspace identities and optional SSH keys. Sources are an explicit local JSON
+  profile or Bitwarden Secure Note/SSH key items. Interactive new mode collects
+  username/email, generates an Ed25519 pair with ssh-keygen and saves its profile
+  automatically; existing valid keys are reused. First interactive setup offers
+  new/bitwarden choices. Bitwarden lists SSH-key metadata in a native multi-select
+  checkbox menu, then collects identities/workspaces and creates selected folders.
+  Store item IDs to resolve duplicate names; cached refresh needs no chooser/note.
+  Explicit Secure Note import remains compatible. No-source reruns stay offline;
+  no implicit vault login. Version-1 profiles remain compatible. Identity-only
+  setup needs Git/jq; SSH/bw dependencies apply only when their features are chosen.
   Private files use mode 600 and SSH directories mode 700; managed aliases disable
   agents. Stage/validate imports, lock setup-owned sessions and never log key JSON
   or remove passphrases. Rotation backups contain private keys. Default orchestration

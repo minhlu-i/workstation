@@ -25,9 +25,9 @@ macOS, Ubuntu and WSL2. Missing installations use the corresponding
 [mise registry](https://mise.jdx.dev/registry) entries; working external installs
 (including Homebrew or native installers) are reused. Setup does not install a
 global Node.js runtime for these tools or upgrade existing installations.
-Doctor checks `--version`, not account access. The saved explicit Git personal
-workflow uses bw to restore profile/local keys; basic setup does not access the
-vault. See [setup-git](../setup-git/README.md). Run `codex` or `claude` yourself
+Doctor checks `--version`, not account access. Optional Git personalization can
+use bw to restore profiles/local keys, or use a local profile without bw. Basic
+setup does not access the vault. See [setup-git](../setup-git/README.md). Run `codex` or `claude` yourself
 after setup to sign in; credentials, settings, skills and plugins remain user-owned.
 See [Codex CLI](https://developers.openai.com/codex/cli) and
 [Claude Code setup](https://code.claude.com/docs/en/setup).
