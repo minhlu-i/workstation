@@ -1,17 +1,36 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Never trace decrypted key material or session tokens.
+set +x
+umask 077
 module=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 case ${1-} in
-    ''|--configure-only) (( $# <= 1 )) || exit 2 ;;
-    --help) printf 'Usage: setup-git/install.sh [--configure-only]\nOptional WORKSTATION_SSH_AGENT_SOCKET: absolute Unix socket path.\n'; exit 0 ;;
+    ''|--configure-only|--refresh) (( $# <= 1 )) || exit 2 ;;
+    --help) printf 'Usage: setup-git/install.sh [--configure-only|--refresh]\nWORKSTATION_GIT_PROFILE_ITEM: Secure Note name/ID (default workstation-git).\n'; exit 0 ;;
     *) exit 2 ;;
 esac
 source "$module/common.bash"
 check_environment
-select_agent
+check_local_paths
 source "$module/../setup-tools/file-operations.bash"
 work=$(mktemp -d)
-trap 'rm -rf -- "$work"' EXIT
+owns_session=0
+cleanup() {
+    local result=$?
+    trap - EXIT
+    if [[ $owns_session == 1 ]]; then
+        if ! bw lock >/dev/null 2>&1; then
+            printf 'setup-git: Failed to lock Bitwarden; run bw lock manually.\n' >&2
+            result=1
+        fi
+        unset BW_SESSION
+    fi
+    rm -rf -- "$work"
+    exit "$result"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 for file in "$HOME/.gitconfig" "$HOME/.ssh/config"; do
     [[ ! -L $file && ! -d $file ]] || fail "Refusing non-regular root config: $file"
 done
@@ -35,18 +54,48 @@ if [[ -f $HOME/.ssh/config ]]; then
         !skip { print }
     ' "$HOME/.ssh/config" >> "$work/ssh-root"
 fi
+# Stage all vault data and validate it before changing configuration or keys.
+profile="$HOME/.config/git/workstation-profile.json"
+local_data_complete() {
+    [[ -f $profile ]] || return 1
+    local account
+    for account in personal s5tech; do
+        [[ -f $HOME/.ssh/workstation/$account && -f $HOME/.ssh/workstation/$account.pub ]] || return 1
+    done
+}
+if [[ ${1-} != --refresh ]] && local_data_complete; then
+    cp "$profile" "$work/profile.json"
+    validate_profile "$work/profile.json"
+    for account in personal s5tech; do
+        cp "$HOME/.ssh/workstation/$account" "$work/$account"
+        cp "$HOME/.ssh/workstation/$account.pub" "$work/$account.pub"
+        chmod 600 "$work/$account"
+        validate_key_pair "$work/$account" "$work/$account.pub"
+    done
+elif [[ ${1-} == --configure-only ]]; then
+    fail 'Local Git profile/key pairs missing; run setup-git/install.sh to restore from Bitwarden first.'
+else
+    source "$module/bitwarden.bash"
+    import_bitwarden
+fi
 render_ssh > "$work/ssh-managed"
+render_git "$work/profile.json" "$work/git-managed"
 for account in personal s5tech; do
-    ssh-keygen -lf "$module/files/$account.pub" >/dev/null || fail "Invalid $account public key."
+    render_identity "$work/profile.json" "$account" "$work/$account.gitconfig"
 done
-write_owned "$module/files/gitconfig" "$HOME/.config/git/workstation.gitconfig" .config/git/workstation.gitconfig
+mkdir -p "$HOME/.ssh/workstation" "$HOME/.config/git"
+chmod 700 "$HOME/.ssh" "$HOME/.ssh/workstation"
+write_owned "$work/profile.json" "$profile" .config/git/workstation-profile.json 600
+write_owned "$work/git-managed" "$HOME/.config/git/workstation.gitconfig" .config/git/workstation.gitconfig
 for account in personal s5tech; do
-    write_owned "$module/files/$account.gitconfig" "$HOME/Workspace/$account/.gitconfig" "Workspace/$account/.gitconfig"
-    write_owned "$module/files/$account.pub" "$HOME/.ssh/workstation/$account.pub" ".ssh/workstation/$account.pub"
+    # Harden an existing private key before making any rotation backup.
+    [[ ! -f $HOME/.ssh/workstation/$account ]] || chmod 600 "$HOME/.ssh/workstation/$account"
+    write_owned "$work/$account.gitconfig" "$HOME/Workspace/$account/.gitconfig" "Workspace/$account/.gitconfig"
+    write_owned "$work/$account" "$HOME/.ssh/workstation/$account" ".ssh/workstation/$account" 600
+    write_owned "$work/$account.pub" "$HOME/.ssh/workstation/$account.pub" ".ssh/workstation/$account.pub"
 done
 write_owned "$work/ssh-managed" "$HOME/.ssh/workstation/config" .ssh/workstation/config
 write_owned "$work/ssh-root" "$HOME/.ssh/config" .ssh/config
 write_owned "$work/gitconfig" "$HOME/.gitconfig" .gitconfig
 bash "$module/verify.sh" --config-only
-printf 'Git configured. Bitwarden Desktop: enable SSH Agent and choose Remember until vault is locked.\n'
-printf 'Agent socket: %s\nRun setup-git/verify.sh after unlocking Bitwarden; no private keys were exported.\n' "$agent"
+printf 'Git configured with local SSH keys; no SSH agent or Bitwarden session is needed for Git.\n'

@@ -5,6 +5,8 @@ work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
 export HOME="$work/home with spaces" XDG_CONFIG_HOME="$work/home with spaces/.config" GIT_CONFIG_NOSYSTEM=1
 unset GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS GIT_DIR GIT_WORK_TREE GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL EMAIL WORKSTATION_SSH_AGENT_SOCKET
+source "$root/setup-git/tests/fixtures.bash"
+prepare_vault_fixture
 mkdir -p "$HOME/.ssh"
 printf '[alias]\n    custom = status -sb\n[core]\n    excludesFile = %s/.gitignore_global\n' "$HOME" > "$HOME/.gitconfig"
 printf 'experimental\n' > "$HOME/.gitignore_global"
@@ -21,7 +23,7 @@ Host unrelated
 CONFIG
 cp "$HOME/.gitconfig" "$work/original-git"
 cp "$HOME/.ssh/config" "$work/original-ssh"
-bash "$root/setup-git/install.sh" --configure-only
+bash "$root/setup-git/install.sh"
 [[ $(git config --global alias.custom) == 'status -sb' ]]
 ! git config --global --get core.excludesfile
 [[ -f $HOME/.gitignore_global ]]
@@ -35,8 +37,8 @@ bash "$root/setup-git/install.sh" --configure-only >/dev/null
 for account in personal s5tech; do
     dir="$HOME/Workspace/$account/test"
     git init -q "$dir"
-    name=minhlu-i; org=minhlu-i; alias=gh-p
-    if [[ $account == s5tech ]]; then name=REDACTED; org=99techteam; alias=gh-s5; fi
+    name=fixture-personal; org=fixture-personal; alias=gh-p
+    if [[ $account == s5tech ]]; then name=fixture-work; org=fixture-work; alias=gh-s5; fi
     [[ $(git -C "$dir" config user.name) == "$name" ]]
     [[ $(git -C "$dir" symbolic-ref --short HEAD) == main ]]
     for url in "git@github.com:$org/example" "ssh://git@github.com/$org/example"; do
@@ -46,11 +48,14 @@ for account in personal s5tech; do
 done
 git init -q "$HOME/outside"
 if git -C "$HOME/outside" var GIT_AUTHOR_IDENT >/dev/null 2>&1; then exit 1; fi
-if bash "$root/setup-git/verify.sh" > "$work/failure" 2>&1; then exit 1; fi
-grep -q 'agent socket missing' "$work/failure"
-# Unknown socket override survives paths containing spaces and doesn't change other SSH hosts.
-WORKSTATION_SSH_AGENT_SOCKET="$HOME/custom agent.sock" bash "$root/setup-git/install.sh" --configure-only >/dev/null
-ssh -G -F "$HOME/.ssh/config" gh-p 2>/dev/null | grep -Fq "identityagent $HOME/custom agent.sock"
+bash "$root/setup-git/verify.sh"
+ssh -G -F "$HOME/.ssh/config" gh-p 2>/dev/null | grep -Fxq 'identityagent none'
+# Offline reruns never contact the vault, even when no CLI session is available.
+cp "$VAULT_CALLS" "$work/calls-before"
+unset BW_SESSION
+bash "$root/setup-git/install.sh" --configure-only >/dev/null
+bash "$root/setup-git/install.sh" >/dev/null
+cmp "$VAULT_CALLS" "$work/calls-before"
 # Additional identities from a wildcard must not silently bypass the selected key.
 printf '\nHost *\n    IdentityFile ~/.ssh/unexpected\n' >> "$HOME/.ssh/config"
 if bash "$root/setup-git/verify.sh" --config-only > "$work/failure" 2>&1; then exit 1; fi

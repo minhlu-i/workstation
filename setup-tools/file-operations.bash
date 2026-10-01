@@ -1,9 +1,12 @@
 # Shared atomic writes; callers provide fail(). Keep the deployed backup path.
 backup=''
 write_owned() {
-    local source=$1 destination=$2 relative=$3 temporary
+    local source=$1 destination=$2 relative=$3 mode=${4:-644} temporary
     [[ ! -d $destination ]] || fail "Expected a file, found directory: $destination"
-    if [[ -f $destination && ! -L $destination ]] && cmp -s "$source" "$destination"; then return; fi
+    if [[ -f $destination && ! -L $destination ]] && cmp -s "$source" "$destination"; then
+        chmod "$mode" "$destination"
+        return
+    fi
     if [[ -e $destination || -L $destination ]]; then
         if [[ -z $backup ]]; then
             mkdir -p "$HOME/.local/state/workstation/bash-workstation/backups"
@@ -16,7 +19,7 @@ write_owned() {
     mkdir -p "$(dirname -- "$destination")"
     temporary=$(mktemp "${destination}.XXXXXX")
     cp -- "$source" "$temporary"
-    chmod 644 "$temporary"
+    chmod "$mode" "$temporary"
     mv -f -- "$temporary" "$destination"
 }
 write_user() {
