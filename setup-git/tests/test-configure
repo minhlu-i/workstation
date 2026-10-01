@@ -23,7 +23,7 @@ Host unrelated
 CONFIG
 cp "$HOME/.gitconfig" "$work/original-git"
 cp "$HOME/.ssh/config" "$work/original-ssh"
-bash "$root/setup-git/install-personal.sh"
+bash "$root/setup-git/install-personal.sh" --bitwarden --profile-item workstation-git
 [[ $(git config --global alias.custom) == 'status -sb' ]]
 ! git config --global --get core.excludesfile
 [[ -f $HOME/.gitignore_global ]]

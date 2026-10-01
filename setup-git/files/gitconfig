@@ -1,8 +1,0 @@
-[init]
-    defaultBranch = main
-[user]
-    useConfigOnly = true
-[includeIf "gitdir:~/Workspace/personal/"]
-    path = ~/Workspace/personal/.gitconfig
-[includeIf "gitdir:~/Workspace/s5tech/"]
-    path = ~/Workspace/s5tech/.gitconfig

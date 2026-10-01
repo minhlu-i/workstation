@@ -20,6 +20,10 @@ status) printf '{"status":"%s"}\n' "${VAULT_STATE:-unlocked}" ;;
 login|unlock) [[ ${VAULT_CASE-} != auth-failure ]] || exit 1; printf 'fixture-session\n' ;;
 lock) [[ ${VAULT_CASE-} != lock-failure ]] ;;
 sync) [[ ${VAULT_CASE-} != sync-failure ]] ;;
+list)
+    [[ $2 == items ]] || exit 9
+    [[ ${VAULT_CASE-} != list-failure ]] || exit 1
+    cat "$VAULT_FIXTURE/list.json" ;;
 get)
     if [[ $2 == notes ]]; then
         [[ $3 == workstation-git || $3 == profile-id ]] || exit 1
@@ -42,4 +46,6 @@ esac
 DOUBLE
     chmod +x "$work/bin/bw"
     export PATH="$work/bin:$PATH" BW_SESSION=fixture-session
+    jq -n --slurpfile personal "$VAULT_FIXTURE/personal.json" --slurpfile work "$VAULT_FIXTURE/s5tech.json" \
+        '[$personal[0]+{id:"personal",name:"personal"},$work[0]+{id:"s5tech",name:"s5tech"},{id:"login",name:"not-a-key",type:1,login:{password:"LIST-SECRET-MARKER"}}]' > "$VAULT_FIXTURE/list.json"
 }
