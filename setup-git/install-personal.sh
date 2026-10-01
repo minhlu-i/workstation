@@ -4,7 +4,7 @@ set +x
 umask 077
 module=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 usage() {
-    printf 'Usage: setup-git/install-personal.sh [new | bitwarden] [options]\nnew: enter username/email, or supply --username NAME --email EMAIL [--account ID] [--workspace PATH] [--github-owner OWNER]\nbitwarden: list/select SSH keys, enter identities and workspaces [advanced: --profile-item NAME_OR_ID]\n--no-input disables prompts. No mode reuses saved local data offline; first interactive setup offers new/bitwarden.\nAdvanced compatibility: --new, --bitwarden, --profile FILE, --refresh, --configure-only.\n'
+    printf 'Usage: setup-git/install-personal.sh [new | bitwarden] [options]\nnew: enter GitHub username, Git email, author name and workspace, or supply --username USERNAME --email EMAIL [--git-name NAME] [--account ID] [--workspace PATH] [--github-owner OWNER]\nbitwarden: list/select SSH keys, enter identities and workspaces [advanced: --profile-item NAME_OR_ID]\n--no-input disables prompts. No mode reuses saved local data offline; first interactive setup offers new/bitwarden.\nAdvanced compatibility: --new, --bitwarden, --profile FILE, --refresh, --configure-only.\n'
 }
 source_mode=local
 profile_file=''
@@ -15,6 +15,7 @@ refresh=0
 create_workspaces=0
 new_username=''
 new_email=''
+new_git_name=''
 new_account=personal
 new_workspace=''
 new_owner=''
@@ -32,11 +33,12 @@ while (( $# )); do
                 --configure-only) source_mode=offline ;;
             esac ;;
         --profile-item) (( $# >= 2 )) && [[ -n $2 && $2 != --* ]] || { usage >&2; exit 2; }; profile_item=$2; item_selected=1; shift ;;
-        --username|--email|--account|--workspace|--github-owner)
+        --username|--email|--git-name|--account|--workspace|--github-owner)
             (( $# >= 2 )) && [[ -n $2 && $2 != --* ]] || { usage >&2; exit 2; }
             case $1 in
                 --username) new_username=$2 ;;
                 --email) new_email=$2 ;;
+                --git-name) new_git_name=$2 ;;
                 --account) new_account=$2 ;;
                 --workspace) new_workspace=$2 ;;
                 --github-owner) new_owner=$2 ;;

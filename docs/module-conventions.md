@@ -43,10 +43,13 @@ not own it. Do not uninstall, take over or silently upgrade existing tools.
   The optional install-personal.sh/verify-personal.sh entry points accept arbitrary
   workspace identities and optional SSH keys. Sources are an explicit local JSON
   profile or Bitwarden Secure Note/SSH key items. Interactive new mode collects
-  username/email, generates an Ed25519 pair with ssh-keygen and saves its profile
+  GitHub username/email, a separate author name (defaulting to username) and
+  workspace, generates an Ed25519 pair with ssh-keygen and saves its profile
   automatically; existing valid keys are reused. First interactive setup offers
   new/bitwarden choices. Bitwarden lists SSH-key metadata in a native multi-select
-  checkbox menu, then collects identities/workspaces and creates selected folders.
+  checkbox menu, then collects GitHub usernames, emails, separate author names and
+  workspaces, and creates selected folders. Preserve saved defaults independently;
+  author names must not determine GitHub URL routing.
   Store item IDs to resolve duplicate names; cached refresh needs no chooser/note.
   Explicit Secure Note import remains compatible. No-source reruns stay offline;
   no implicit vault login. Version-1 profiles remain compatible. Identity-only

@@ -13,7 +13,7 @@ new_home() { export HOME="$work/$1" XDG_CONFIG_HOME="$work/$1/.config"; mkdir "$
 install() { bash "$root/setup-git/install-personal.sh" "$@"; }
 expect_failure() { if "$@" > "$work/error" 2>&1; then exit 1; fi; }
 new_home selected
-printf '1 2\npersonal-user\npersonal@example.invalid\n\nwork-user\nwork@example.invalid\nProjects/Work\n' | install bitwarden > "$work/output"
+printf '1 2\npersonal-user\npersonal@example.invalid\nPersonal Author\n\nwork-user\nwork@example.invalid\nWork Author\nProjects/Work\n' | install bitwarden > "$work/output"
 grep -q 'Found 2 SSH key item(s)' "$work/output"
 ! grep -q 'not-a-key\|LIST-SECRET-MARKER\|BEGIN OPENSSH PRIVATE KEY' "$work/output"
 ! grep -q '^get notes' "$VAULT_CALLS"
@@ -21,7 +21,7 @@ grep -q 'Found 2 SSH key item(s)' "$work/output"
 [[ $(jq -r .accounts.s5tech.sshKeyItem "$HOME/.config/git/workstation-profile.json") == s5tech ]]
 git init -q "$HOME/Workspace/personal/repo"
 git init -q "$HOME/Projects/Work/repo"
-[[ $(git -C "$HOME/Workspace/personal/repo" config user.name) == personal-user ]]
+[[ $(git -C "$HOME/Workspace/personal/repo" config user.name) == 'Personal Author' ]]
 [[ $(git -C "$HOME/Projects/Work/repo" config user.email) == work@example.invalid ]]
 bash "$root/setup-git/verify-personal.sh" >/dev/null
 cp "$VAULT_CALLS" "$work/calls-before"
@@ -33,18 +33,21 @@ grep -q '^get item personal$' "$VAULT_CALLS"
 ! grep -q '^list\|^get notes' "$VAULT_CALLS"
 # Selecting one key again preserves the other account without fetching it.
 : > "$VAULT_CALLS"
-printf '1\n\n\n\n' | install bitwarden >/dev/null
+printf '1\n\n\n\n\n' | install bitwarden >/dev/null
 [[ $(jq '.accounts | length' "$HOME/.config/git/workstation-profile.json") == 2 ]]
 ! grep -q '^get item s5tech$' "$VAULT_CALLS"
+[[ $(git -C "$HOME/Workspace/personal/repo" config user.name) == 'Personal Author' ]]
+[[ $(jq -r .accounts.personal.githubOwner "$HOME/.config/git/workstation-profile.json") == personal-user ]]
+[[ $(git -C "$HOME/Workspace/personal/repo" ls-remote --get-url git@github.com:personal-user/repo) == git@gh-personal:personal-user/repo ]]
 # Duplicate/unusual names get distinct stable account IDs; numbers select exact IDs.
 new_home duplicates
 jq 'map(if .type == 5 then .name="Same / key" else . end)' "$VAULT_FIXTURE/list.json" > "$work/duplicates.json"
 cp "$VAULT_FIXTURE/list.json" "$work/list-before"
 cp "$work/duplicates.json" "$VAULT_FIXTURE/list.json"
-printf 'all\nfirst-user\nfirst@example.invalid\n\nsecond-user\nsecond@example.invalid\n\n' | install bitwarden >/dev/null
+printf 'all\nfirst-user\nfirst@example.invalid\n\n\nsecond-user\nsecond@example.invalid\n\n\n' | install bitwarden >/dev/null
 [[ -d $HOME/Workspace/same-key && -d $HOME/Workspace/same-key-2 ]]
 [[ $(jq -r .accounts[\"same-key-2\"].sshKeyItem "$HOME/.config/git/workstation-profile.json") == s5tech ]]
-printf '2\n\n\n\n' | install bitwarden >/dev/null
+printf '2\n\n\n\n\n' | install bitwarden >/dev/null
 [[ $(jq '.accounts | length' "$HOME/.config/git/workstation-profile.json") == 2 ]]
 cp "$work/list-before" "$VAULT_FIXTURE/list.json"
 for selection in q '' 0 3 '1 1' nope '999999999999999999999'; do
@@ -68,7 +71,7 @@ for case in workspace mismatch encrypted; do
     new_home "invalid-$case"
     destination=Workspace/personal
     [[ $case != workspace ]] || destination=../escape
-    if printf '1\nuser-name\nuser@example.invalid\n%s\n' "$destination" | VAULT_CASE=$case install bitwarden > "$work/error" 2>&1; then exit 1; fi
+    if printf '1\nuser-name\nuser@example.invalid\n\n%s\n' "$destination" | VAULT_CASE=$case install bitwarden > "$work/error" 2>&1; then exit 1; fi
     [[ ! -e $HOME/.config && ! -e $HOME/.ssh && ! -e $HOME/Workspace ]]
     ! grep -q 'BEGIN OPENSSH PRIVATE KEY\|fixture-session\|LIST-SECRET-MARKER' "$work/error"
 done
@@ -114,8 +117,8 @@ def run(home, cancel=False):
         else:
             # Select both with Space/arrows, then unselect the first and confirm.
             os.write(master, b' \x1b[B \x1b[A \r')
-            wait_for(b'GitHub username / Git name')
-            os.write(master, b'checkbox-user\ncheckbox@example.invalid\n\n')
+            wait_for(b'GitHub username')
+            os.write(master, b'checkbox-user\ncheckbox@example.invalid\nCheckbox Author\n\n')
         tail, _ = child.communicate(timeout=15)
         output += tail
         assert (child.returncode != 0) if cancel else (child.returncode == 0), output.decode(errors='replace')

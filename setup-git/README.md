@@ -43,13 +43,16 @@ basic setup. The usual choices are new (create a local key/identity) or bitwarde
 
 ```bash
 ./setup-git/install-personal.sh            # first run: choose new / bitwarden
-./setup-git/install-personal.sh new        # enter username and email
+./setup-git/install-personal.sh new        # enter username, email, author name and workspace
 ./setup-git/install-personal.sh bitwarden  # restore from the vault
 ```
 
 On a first interactive run without saved data, the command asks which mode to use.
-New asks for your GitHub username and Git email, sets the username as Git's author
-name, and runs ssh-keygen to generate an Ed25519 key with your email as its comment.
+New asks separately for GitHub username, Git email, Git author name and workspace.
+The author name defaults to the username for a new account; Enter accepts it, or
+you can enter a different display name. Saved author names/workspaces remain the
+defaults when reconfiguring an account. It runs ssh-keygen to generate an Ed25519
+key with your email as its comment.
 The key has no passphrase, matching the password-free local-key workflow.
 Username also selects the GitHub owner whose SSH URLs are rewritten to the alias.
 
@@ -74,7 +77,9 @@ while retaining existing accounts, and still enter username/email interactively:
 ./setup-git/install-personal.sh new --username YOUR-USERNAME --email you@example.com --no-input
 ```
 
---github-owner can override the owner when the chosen Git author name differs.
+--git-name supplies a separate commit author name, including with --no-input.
+--github-owner can override SSH URL routing for an organization or another owner;
+the Git author name does not determine this routing.
 After setup, no-mode reruns reuse saved configuration/key pairs offline. Without
 saved data and without a terminal, explicitly select new or bitwarden; --no-input
 fails if new is missing username/email or the vault needs login/unlock.
@@ -175,9 +180,12 @@ items. In a terminal, use arrows to move, Space to select/unselect multiple keys
 Enter to confirm, a to select all, or Esc to cancel. The native checkbox menu needs
 no extra CLI dependency and pages long lists. Cancellation deploys nothing.
 
-For each selected key, enter GitHub username/Git name, email and a HOME-relative
-workspace. Workspace defaults to Workspace/<key-name-slug>; you can accept the
-suggestion with Enter. Re-selecting a saved item offers its existing values.
+For each selected key, enter GitHub username, Git email, Git author name and a
+HOME-relative workspace. A new author name defaults to the username; it may differ
+from the GitHub account. GitHub username determines SSH URL routing; author name
+is used in commits. Workspace defaults to Workspace/<key-name-slug>; you can accept the
+suggestion with Enter. Re-selecting a saved item offers its existing GitHub owner,
+author name, email and workspace independently.
 Username/email cannot be reliably inferred from a key, so first selection requires
 entry; previously saved values can be accepted with Enter.
 Setup creates the selected workspace directories and configures Git identities

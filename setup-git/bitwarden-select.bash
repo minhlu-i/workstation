@@ -57,17 +57,18 @@ select_bitwarden_keys() {
         workspace=$(field "$work/selection-profile.json" "$account" workspace)
         workspace=${workspace:-Workspace/$account}
         printf '\nKey: %s; account: %s\n' "$name" "$account"
-        read -r -p "GitHub username / Git name${previous_name:+ [$previous_name]}: " username || fail 'Git identity input cancelled.'
-        username=${username:-$previous_name}
-        local entered_email entered_workspace owner
+        read -r -p "GitHub username${previous_owner:+ [$previous_owner]}: " username || fail 'GitHub username input cancelled.'
+        username=${username:-$previous_owner}
+        local entered_email entered_workspace entered_name author_name default_name
         read -r -p "Git email${email:+ [$email]}: " entered_email || fail 'Git email input cancelled.'
         email=${entered_email:-$email}
+        default_name=${previous_name:-$username}
+        read -r -p "Git author name [$default_name]: " entered_name || fail 'Git author name input cancelled.'
+        author_name=${entered_name:-$default_name}
         read -r -p "Workspace relative to HOME [$workspace]: " entered_workspace || fail 'Workspace input cancelled.'
         workspace=${entered_workspace:-$workspace}
-        owner=$username
-        if [[ $username == "$previous_name" && -n $previous_owner ]]; then owner=$previous_owner; fi
-        jq --arg account "$account" --arg name "$username" --arg email "$email" \
-            --arg workspace "$workspace" --arg item "$item_id" --arg owner "$owner" '
+        jq --arg account "$account" --arg name "$author_name" --arg email "$email" \
+            --arg workspace "$workspace" --arg item "$item_id" --arg owner "$username" '
             .accounts[$account] = {name:$name,email:$email,workspace:$workspace,sshKeyItem:$item,
               sshAlias:(.accounts[$account].sshAlias // ("gh-" + $account)),githubOwner:$owner}
         ' "$work/selection-profile.json" > "$work/next-profile.json"
