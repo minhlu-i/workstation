@@ -13,9 +13,22 @@ Doctor does not certify a complete development workstation.
 TERM=xterm-256color ./doctor/check.sh
 ```
 
+## First run
+
+1. Obtain this checkout, then run `./setup.sh`. The
+   [installer](setup.sh) runs tools (including missing Homebrew), shell, basic Git,
+   Docker and doctor. Complete any CLT/OrbStack/WSL manual steps it reports, then rerun.
+2. Optionally run `./setup-git/install-personal.sh`. On a first interactive run,
+   choose `new` or `bitwarden`; follow [Git personalization](setup-git/README.md)
+   for key selection, identity and workspace defaults. This is a separate command.
+3. Follow its GitHub public-key/authentication hints, and use
+   `./setup-git/verify-personal.sh` for local personal checks. Doctor continues to
+   assess basic Git only; it does not certify GitHub access.
+
 Run as the intended user, not with sudo. Homebrew's initial installation may need
 sudo; native Docker installation on Ubuntu also uses sudo. Entry points work from any directory.
-No login shell, system shell binary, profile, secrets or terminal settings are changed.
+Basic setup does not change the login shell, system shell binary, login profile,
+secrets or terminal settings.
 
 ## Platforms and package ownership
 
@@ -38,9 +51,12 @@ Starship/zoxide/Flyline use **mise**. Manifests retain `latest` for mise-managed
 entries, but omit working external tools to avoid competing installations.
 Project runtimes (Node/Python/Go, etc.) remain in each project's `mise.toml`.
 
-Common CLI include Codex (`codex`) and Claude Code (`claude`) on all supported
-platforms, including WSL2. Setup reuses existing installations or installs missing
-ones with mise. Sign in manually afterward; account/configuration sync is not managed.
+Common CLI include Bitwarden CLI (`bw`), Codex (`codex`) and Claude Code (`claude`)
+on all supported platforms, including WSL2. Setup reuses existing installations or
+installs missing ones with mise. Sign in to Codex/Claude manually afterward; their
+account/configuration sync is not managed. Default Git setup does not configure
+accounts or contact the vault. Explicit personal restoration is described in
+[setup-git](setup-git/README.md).
 
 Zed uses the macOS Homebrew cask or its official installer on native Ubuntu;
 WSL skips Zed. Restore editor settings from your online configuration manually.
@@ -76,7 +92,7 @@ or copy); setup cannot supply Git before you have obtained the checkout.
 |---|---|
 | [setup-tools](setup-tools/README.md) | Implemented: Homebrew bootstrap, mise, base commands, common CLI and Zed |
 | [setup-shell](setup-shell/README.md) | Implemented: native shell, shell plugins, shared Starship/zoxide, modular startup |
-| [setup-git](setup-git/README.md) | Implemented: workspace identities and Bitwarden SSH agent configuration |
+| [setup-git](setup-git/README.md) | Implemented: basic Git checks/default branch; personal workflow is separate |
 | [setup-docker](setup-docker/README.md) | Implemented: OrbStack / native Docker Engine, CLI, Compose and Buildx |
 | [setup-workspace](setup-workspace/README.md) | Planned: workspace organization |
 
@@ -142,8 +158,11 @@ planned domains separately and returns nonzero on mandatory failure. It does not
 install or repair configuration. Shell verification executes interactive startup,
 including personal fragments, and may create normal history/completion caches.
 
-Git runtime checks require Bitwarden Desktop and its SSH agent; see
-[setup-git](setup-git/README.md) for authorization settings and WSL limitations.
+Default Git setup and doctor check only Git and its default branch. Identity and
+SSH are not assessed; doctor explicitly reports personalization as SKIP. Existing
+personal configuration is preserved. Use the separate
+[Git personal verifier](setup-git/verify-personal.sh) after optional personalization;
+see [Git setup and recovery](setup-git/README.md).
 Docker runtime checks require the selected local OrbStack/native Engine socket
 to be reachable by the current user. They never pull images or run containers;
 `./setup-docker/verify.sh --tools-only` checks installed tools without probing it.
@@ -151,8 +170,12 @@ to be reachable by the current user. They never pull images or run containers;
 Tests use temporary homes:
 
 ```bash
-./setup-git/tests/test-configure
-./setup-git/tests/test-agent             # Python 3; agent double
+./setup-git/tests/test-basic             # basic setup; no vault/SSH calls
+./setup-git/tests/test-new               # prompts and local ssh-keygen setup
+./setup-git/tests/test-personal          # optional identities/local keys/sources
+./setup-git/tests/test-configure         # personal configuration and compatibility
+./setup-git/tests/test-bitwarden         # generated keys and bw double
+./setup-git/tests/test-bitwarden-select  # checkbox selection and workspace mapping
 ./setup-tools/tests/test-providers
 ./setup-tools/tests/test-bootstrap       # OS/sudo/installer doubles
 ./setup-tools/tests/test-configure

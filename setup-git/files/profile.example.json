@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "accounts": {
+    "developer": {
+      "name": "YOUR_NAME",
+      "email": "you@example.com",
+      "workspace": "Workspace/developer"
+    }
+  }
+}

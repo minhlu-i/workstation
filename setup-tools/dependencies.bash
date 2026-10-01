@@ -40,7 +40,7 @@ ensure_command() {
     working_command "$executable" || fail "Installed $formula but $executable is unavailable/broken."
 }
 tool_command() {
-    case $1 in ripgrep) printf rg ;; tealdeer) printf tldr ;; *) printf '%s' "$1" ;; esac
+    case $1 in bitwarden) printf bw ;; ripgrep) printf rg ;; tealdeer) printf tldr ;; *) printf '%s' "$1" ;; esac
 }
 external_tool_works() {
     local executable location version

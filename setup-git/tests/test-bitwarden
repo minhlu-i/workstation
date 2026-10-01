@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
+work=$(mktemp -d)
+trap 'rm -rf -- "$work"' EXIT
+export GIT_CONFIG_NOSYSTEM=1
+unset GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS GIT_DIR GIT_WORK_TREE
+source "$root/setup-git/tests/fixtures.bash"
+prepare_vault_fixture
+new_home() {
+    export HOME="$work/$1" XDG_CONFIG_HOME="$work/$1/.config"
+    mkdir -p "$HOME"
+}
+new_home ready
+WORKSTATION_GIT_PROFILE_ITEM=profile-id bash "$root/setup-git/install-personal.sh" --bitwarden --profile-item workstation-git > "$work/output"
+bash "$root/setup-git/verify-personal.sh"
+! grep -q '^lock$' "$VAULT_CALLS" # Caller-owned CLI session remains usable.
+for account in personal s5tech; do
+    cmp "$VAULT_FIXTURE/$account" "$HOME/.ssh/workstation/$account"
+done
+# Runtime verifier catches exposed keys, inconsistent pairs and agent overrides.
+chmod 644 "$HOME/.ssh/workstation/personal"
+if bash "$root/setup-git/verify-personal.sh" > "$work/error" 2>&1; then exit 1; fi
+grep -q 'mode 600' "$work/error"
+bash "$root/setup-git/install-personal.sh" --configure-only >/dev/null
+cp "$HOME/.ssh/workstation/s5tech.pub" "$HOME/.ssh/workstation/personal.pub"
+if bash "$root/setup-git/verify-personal.sh" > "$work/error" 2>&1; then exit 1; fi
+grep -q 'mismatch' "$work/error"
+cp "$VAULT_FIXTURE/personal.pub" "$HOME/.ssh/workstation/personal.pub"
+# Incomplete local data is an explicit offline failure and a normal install
+# restores it from the vault instead of failing during a raw file copy.
+rm "$HOME/.ssh/workstation/personal.pub"
+: > "$VAULT_CALLS"
+if bash "$root/setup-git/install-personal.sh" --configure-only > "$work/error" 2>&1; then exit 1; fi
+grep -q 'Local Git profile/key pairs missing' "$work/error"
+[[ ! -s $VAULT_CALLS ]]
+bash "$root/setup-git/install-personal.sh" --bitwarden --profile-item workstation-git >/dev/null
+grep -q '^sync$' "$VAULT_CALLS"
+cmp "$VAULT_FIXTURE/personal.pub" "$HOME/.ssh/workstation/personal.pub"
+# Refresh rotates keys and stores old private keys in protected backups.
+ssh-keygen -q -t ed25519 -N '' -C rotated -f "$VAULT_FIXTURE/rotated"
+jq --rawfile private "$VAULT_FIXTURE/rotated" --rawfile public "$VAULT_FIXTURE/rotated.pub" '.sshKey={privateKey:$private,publicKey:$public}' "$VAULT_FIXTURE/personal.json" > "$VAULT_FIXTURE/rotation.json"
+mv "$VAULT_FIXTURE/rotation.json" "$VAULT_FIXTURE/personal.json"
+bash "$root/setup-git/install-personal.sh" --refresh >/dev/null
+cmp "$VAULT_FIXTURE/rotated" "$HOME/.ssh/workstation/personal"
+backup_key=$(find "$HOME/.local/state" -type f -path '*/.ssh/workstation/personal')
+cmp "$VAULT_FIXTURE/personal" "$backup_key"
+module="$root/setup-git"; source "$module/common.bash"
+[[ $(file_mode "$backup_key") == 600 ]]
+# First install and all failed imports must lock sessions created by setup.
+unset BW_SESSION
+export VAULT_STATE=locked
+new_home owned-session
+bash "$root/setup-git/install-personal.sh" --bitwarden --profile-item workstation-git >/dev/null
+grep -q '^unlock --raw$' "$VAULT_CALLS"
+grep -q '^lock$' "$VAULT_CALLS"
+export VAULT_STATE=unauthenticated
+new_home login-session
+bash "$root/setup-git/install-personal.sh" --bitwarden --profile-item workstation-git >/dev/null
+grep -q '^login --raw$' "$VAULT_CALLS"
+# A cleanup failure must be visible because the setup-owned session may remain
+# unlocked even though deployment itself completed.
+new_home lock-failure
+: > "$VAULT_CALLS"
+if VAULT_CASE=lock-failure bash "$root/setup-git/install-personal.sh" --bitwarden --profile-item workstation-git > "$work/error" 2>&1; then exit 1; fi
+grep -q '^lock$' "$VAULT_CALLS"
+grep -q 'run bw lock manually' "$work/error"
+! grep -q 'BEGIN OPENSSH PRIVATE KEY\|fixture-session' "$work/error"
+for case in bad-profile duplicate-owner missing encrypted mismatch auth-failure sync-failure; do
+    new_home "failure-$case"
+    : > "$VAULT_CALLS"
+    if VAULT_CASE=$case bash "$root/setup-git/install-personal.sh" --bitwarden --profile-item workstation-git > "$work/error" 2>&1; then exit 1; fi
+    [[ ! -e $HOME/.ssh && ! -e $HOME/.config/git && ! -e $HOME/.gitconfig ]]
+    grep -q '^lock$' "$VAULT_CALLS"
+    ! grep -q 'BEGIN OPENSSH PRIVATE KEY\|fixture-session' "$work/error"
+done
+new_home offline-missing
+: > "$VAULT_CALLS"
+if bash "$root/setup-git/install-personal.sh" --configure-only >/dev/null 2>&1; then exit 1; fi
+[[ ! -s $VAULT_CALLS ]]
+# Refuse symlinked key/config parents before reading the vault or writing data.
+new_home symlink-parent
+mkdir "$work/other"
+ln -s "$work/other" "$HOME/.ssh"
+if bash "$root/setup-git/install-personal.sh" --bitwarden --profile-item workstation-git > "$work/error" 2>&1; then exit 1; fi
+grep -q 'symlink' "$work/error"
+[[ ! -s $VAULT_CALLS && -z $(ls -A "$work/other") ]]
+printf 'PASS vault import, cleanup, offline reruns, permissions, rotation and rejected invalid/encrypted/mismatched keys\n'

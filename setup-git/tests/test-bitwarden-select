@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
+work=$(mktemp -d)
+trap 'rm -rf -- "$work"' EXIT
+export GIT_CONFIG_NOSYSTEM=1
+unset GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS GIT_DIR GIT_WORK_TREE WORKSTATION_GIT_PROFILE_ITEM
+source "$root/setup-git/tests/fixtures.bash"
+prepare_vault_fixture
+mkdir "$work/staging"
+export TMPDIR="$work/staging"
+new_home() { export HOME="$work/$1" XDG_CONFIG_HOME="$work/$1/.config"; mkdir "$HOME"; }
+install() { bash "$root/setup-git/install-personal.sh" "$@"; }
+expect_failure() { if "$@" > "$work/error" 2>&1; then exit 1; fi; }
+new_home selected
+printf '1 2\npersonal-user\npersonal@example.invalid\n\nwork-user\nwork@example.invalid\nProjects/Work\n' | install bitwarden > "$work/output"
+grep -q 'Found 2 SSH key item(s)' "$work/output"
+! grep -q 'not-a-key\|LIST-SECRET-MARKER\|BEGIN OPENSSH PRIVATE KEY' "$work/output"
+! grep -q '^get notes' "$VAULT_CALLS"
+[[ -d $HOME/Workspace/personal && -d $HOME/Projects/Work ]]
+[[ $(jq -r .accounts.s5tech.sshKeyItem "$HOME/.config/git/workstation-profile.json") == s5tech ]]
+git init -q "$HOME/Workspace/personal/repo"
+git init -q "$HOME/Projects/Work/repo"
+[[ $(git -C "$HOME/Workspace/personal/repo" config user.name) == personal-user ]]
+[[ $(git -C "$HOME/Projects/Work/repo" config user.email) == work@example.invalid ]]
+bash "$root/setup-git/verify-personal.sh" >/dev/null
+cp "$VAULT_CALLS" "$work/calls-before"
+install >/dev/null
+cmp "$VAULT_CALLS" "$work/calls-before"
+: > "$VAULT_CALLS"
+install --refresh --no-input >/dev/null
+grep -q '^get item personal$' "$VAULT_CALLS"
+! grep -q '^list\|^get notes' "$VAULT_CALLS"
+# Selecting one key again preserves the other account without fetching it.
+: > "$VAULT_CALLS"
+printf '1\n\n\n\n' | install bitwarden >/dev/null
+[[ $(jq '.accounts | length' "$HOME/.config/git/workstation-profile.json") == 2 ]]
+! grep -q '^get item s5tech$' "$VAULT_CALLS"
+# Duplicate/unusual names get distinct stable account IDs; numbers select exact IDs.
+new_home duplicates
+jq 'map(if .type == 5 then .name="Same / key" else . end)' "$VAULT_FIXTURE/list.json" > "$work/duplicates.json"
+cp "$VAULT_FIXTURE/list.json" "$work/list-before"
+cp "$work/duplicates.json" "$VAULT_FIXTURE/list.json"
+printf 'all\nfirst-user\nfirst@example.invalid\n\nsecond-user\nsecond@example.invalid\n\n' | install bitwarden >/dev/null
+[[ -d $HOME/Workspace/same-key && -d $HOME/Workspace/same-key-2 ]]
+[[ $(jq -r .accounts[\"same-key-2\"].sshKeyItem "$HOME/.config/git/workstation-profile.json") == s5tech ]]
+printf '2\n\n\n\n' | install bitwarden >/dev/null
+[[ $(jq '.accounts | length' "$HOME/.config/git/workstation-profile.json") == 2 ]]
+cp "$work/list-before" "$VAULT_FIXTURE/list.json"
+for selection in q '' 0 3 '1 1' nope '999999999999999999999'; do
+    new_home "bad-selection-${selection// /-}"
+    : > "$VAULT_CALLS"
+    if printf '%s\n' "$selection" | install bitwarden > "$work/error" 2>&1; then exit 1; fi
+    [[ ! -e $HOME/.config && ! -e $HOME/.ssh && ! -e $HOME/Workspace ]]
+    ! grep -q '^get item' "$VAULT_CALLS"
+done
+new_home empty-vault
+printf '[]\n' > "$VAULT_FIXTURE/list.json"
+expect_failure install bitwarden
+grep -q 'No SSH key items found' "$work/error"
+cp "$work/list-before" "$VAULT_FIXTURE/list.json"
+new_home no-input
+expect_failure install bitwarden --no-input
+grep -q 'Key selection requires input' "$work/error"
+[[ ! -e $HOME/.config && ! -e $HOME/.ssh ]]
+# Invalid workspace/key data must fail before any directories/config are deployed.
+for case in workspace mismatch encrypted; do
+    new_home "invalid-$case"
+    destination=Workspace/personal
+    [[ $case != workspace ]] || destination=../escape
+    if printf '1\nuser-name\nuser@example.invalid\n%s\n' "$destination" | VAULT_CASE=$case install bitwarden > "$work/error" 2>&1; then exit 1; fi
+    [[ ! -e $HOME/.config && ! -e $HOME/.ssh && ! -e $HOME/Workspace ]]
+    ! grep -q 'BEGIN OPENSSH PRIVATE KEY\|fixture-session\|LIST-SECRET-MARKER' "$work/error"
+done
+# Cancelling or a failed list locks only setup-owned sessions.
+new_home owned-session
+unset BW_SESSION
+export VAULT_STATE=locked
+: > "$VAULT_CALLS"
+if printf 'q\n' | install bitwarden > "$work/error" 2>&1; then exit 1; fi
+grep -q '^unlock --raw$' "$VAULT_CALLS"
+grep -q '^lock$' "$VAULT_CALLS"
+new_home failed-list
+: > "$VAULT_CALLS"
+expect_failure env VAULT_CASE=list-failure bash "$root/setup-git/install-personal.sh" bitwarden
+grep -q '^lock$' "$VAULT_CALLS"
+export MODULE_INSTALL="$root/setup-git/install-personal.sh" CHECKBOX_HOME="$work/checkbox" CANCEL_HOME="$work/checkbox-cancel"
+mkdir "$CHECKBOX_HOME" "$CANCEL_HOME"
+python3 - <<'PY'
+import os, pty, select, subprocess, termios, time
+
+def run(home, cancel=False):
+    master, slave = pty.openpty()
+    original_termios = termios.tcgetattr(master)
+    env = dict(os.environ, HOME=home, XDG_CONFIG_HOME=home+'/.config', VAULT_STATE='locked')
+    env.pop('BW_SESSION', None)
+    child = subprocess.Popen(['bash', os.environ['MODULE_INSTALL'], 'bitwarden'],
+                             stdin=slave, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
+    os.close(slave)
+    output = b''
+    def wait_for(marker):
+        nonlocal output
+        deadline = time.monotonic() + 15
+        while marker not in output:
+            assert time.monotonic() < deadline, output.decode(errors='replace')
+            if select.select([child.stdout], [], [], .2)[0]:
+                data = os.read(child.stdout.fileno(), 65536)
+                assert data, output.decode(errors='replace')
+                output += data
+    try:
+        wait_for(b'Space: toggle')
+        if cancel:
+            os.write(master, b'\x1b')
+        else:
+            # Select both with Space/arrows, then unselect the first and confirm.
+            os.write(master, b' \x1b[B \x1b[A \r')
+            wait_for(b'GitHub username / Git name')
+            os.write(master, b'checkbox-user\ncheckbox@example.invalid\n\n')
+        tail, _ = child.communicate(timeout=15)
+        output += tail
+        assert (child.returncode != 0) if cancel else (child.returncode == 0), output.decode(errors='replace')
+        assert b'\x1b[?25h\x1b[?1049l' in output
+        assert termios.tcgetattr(master) == original_termios
+        assert b'BEGIN OPENSSH PRIVATE KEY' not in output and b'fixture-session' not in output
+    finally:
+        os.close(master)
+        if child.poll() is None:
+            child.terminate()
+            try:
+                child.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                child.kill()
+                child.wait()
+
+run(os.environ['CHECKBOX_HOME'])
+run(os.environ['CANCEL_HOME'], cancel=True)
+PY
+[[ $(jq '.accounts | keys | .[]' "$CHECKBOX_HOME/.config/git/workstation-profile.json") == '"s5tech"' ]]
+[[ -d $CHECKBOX_HOME/Workspace/s5tech && ! -e $CANCEL_HOME/.config && ! -e $CANCEL_HOME/.ssh ]]
+grep -q '^lock$' "$VAULT_CALLS"
+[[ -z $(ls -A "$TMPDIR") ]]
+printf 'PASS SSH-key counts/selection, exact IDs, workspace creation, cached refresh, cancellation and secret-safe failures\n'

@@ -18,9 +18,10 @@ for domain in setup-tools setup-shell setup-git setup-docker; do
         failures=$((failures+1))
     fi
 done
+printf 'SKIP (not requested): Git personalization; identity and SSH authentication not checked\n'
 printf 'PLANNED (not checked): setup-workspace\n'
 if (( failures )); then
     printf 'Implemented-domain checks failed: %s\n' "$failures" >&2
     exit 1
 fi
-printf 'Tools, shell, Git and Docker checks passed. Full workstation readiness is not assessed.\n'
+printf 'Tools, shell, basic Git and Docker checks passed. Full workstation readiness is not assessed.\n'

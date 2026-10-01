@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
+work=$(mktemp -d)
+trap 'rm -rf -- "$work"' EXIT
+export GIT_CONFIG_NOSYSTEM=1
+unset GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS GIT_DIR GIT_WORK_TREE GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL EMAIL
+source "$root/setup-git/tests/fixtures.bash"
+prepare_vault_fixture
+new_home() {
+    export HOME="$work/$1" XDG_CONFIG_HOME="$work/$1/.config"
+    mkdir -p "$HOME"
+}
+expect_failure() {
+    if "$@" > "$work/error" 2>&1; then printf 'Unexpected success: %s\n' "$*" >&2; exit 1; fi
+}
+install() { bash "$root/setup-git/install-personal.sh" "$@"; }
+verify() { bash "$root/setup-git/verify-personal.sh" "$@"; }
+new_home identity-only
+mkdir "$work/forbidden-bin"
+export FORBIDDEN_CALLS="$work/forbidden-calls"
+for command in bw ssh ssh-keygen; do
+    cat > "$work/forbidden-bin/$command" <<'BLOCK'
+#!/bin/sh
+printf '%s\n' "${0##*/}" >> "$FORBIDDEN_CALLS"
+exit 99
+BLOCK
+    chmod +x "$work/forbidden-bin/$command"
+done
+real_path=$PATH
+export PATH="$work/forbidden-bin:$PATH"
+cat > "$work/identity.json" <<'JSON'
+{"version":2,"accounts":{"developer":{"name":"Developer Example","email":"dev@example.invalid","workspace":"Projects/My Code"}}}
+JSON
+printf '[init]\n defaultBranch = develop\n[credential]\n helper = existing\n' > "$HOME/.gitconfig"
+install --profile "$work/identity.json" --no-input >/dev/null
+verify >/dev/null
+[[ ! -e $HOME/.ssh && ! -e $HOME/Projects && ! -s $FORBIDDEN_CALLS && ! -s $VAULT_CALLS ]]
+[[ $(git config --global init.defaultBranch) == develop ]]
+[[ $(git config --global credential.helper) == existing ]]
+chmod 644 "$HOME/.config/git/workstation-identities/developer.gitconfig"
+expect_failure verify
+grep -q 'identity must have mode 600' "$work/error"
+install >/dev/null
+verify >/dev/null
+git init -q "$HOME/Projects/My Code/example"
+[[ $(git -C "$HOME/Projects/My Code/example" config user.name) == 'Developer Example' ]]
+[[ $(git -C "$HOME/Projects/My Code/example" config user.email) == dev@example.invalid ]]
+git -C "$HOME/Projects/My Code/example" config user.name 'Repo Override'
+[[ $(git -C "$HOME/Projects/My Code/example" config user.name) == 'Repo Override' ]]
+backups_before=$(find "$HOME/.local/state" -type f | wc -l)
+install >/dev/null
+install --configure-only >/dev/null
+[[ $(find "$HOME/.local/state" -type f | wc -l) -eq $backups_before ]]
+[[ ! -s $FORBIDDEN_CALLS && ! -s $VAULT_CALLS ]]
+# No source is a strictly offline operation, even when a vault session exists.
+new_home missing-profile
+expect_failure install
+grep -q 'choose new or bitwarden' "$work/error"
+[[ ! -e $HOME/.config && ! -s $FORBIDDEN_CALLS && ! -s $VAULT_CALLS ]]
+for args in '--profile' '--unknown' '--bitwarden --configure-only' '--profile-item custom'; do
+    # Intentional word splitting for simple fixed CLI cases.
+    expect_failure install $args
+done
+expect_failure install --profile "$work/identity.json" --bitwarden
+# Invalid profiles never write configuration or invoke any SSH/vault command.
+for json in \
+    '{"version":2,"accounts":{}}' \
+    '{"version":2,"accounts":{"bad/id":{"name":"x","email":"x"}}}' \
+    '{"version":2,"accounts":{"dev":{"name":"x","email":"x","workspace":"../other"}}}' \
+    '{"version":2,"accounts":{"dev":{"name":"x","email":"x","workspace":"Projects/*"}}}' \
+    '{"version":2,"accounts":{"dev":{"name":"x","email":"x","workspace":"Code"},"work":{"name":"y","email":"y","workspace":"Code/Nested"}}}' \
+    '{"version":2,"accounts":{"dev":{"name":"x","email":"x","githubOwner":"owner"}}}' \
+    '{"version":2,"accounts":{"dev":{"name":"x","email":"x","sshKeyItem":null}}}' \
+    '{"version":2,"accounts":{"config":{"name":"x","email":"x","sshKeyItem":"key"}}}'; do
+    printf '%s\n' "$json" > "$work/invalid.json"
+    expect_failure install --profile "$work/invalid.json"
+    [[ ! -e $HOME/.config && ! -e $HOME/.ssh && ! -e $HOME/.gitconfig ]]
+done
+[[ ! -s $FORBIDDEN_CALLS && ! -s $VAULT_CALLS ]]
+# A local private key can supply its own derived public key; bw is never used.
+export PATH=$real_path
+new_home local-key
+jq -n --arg key "$VAULT_FIXTURE/personal" '{version:2,accounts:{solo:{name:"Solo",email:"solo@example.invalid",privateKeyFile:$key,githubOwner:"example-owner",sshAlias:"gh-solo"}}}' > "$work/local.json"
+install --profile "$work/local.json" >/dev/null
+verify >/dev/null
+[[ ! -s $VAULT_CALLS ]]
+cmp "$VAULT_FIXTURE/personal" "$HOME/.ssh/workstation/solo"
+[[ $(ssh -G -F "$HOME/.ssh/config" gh-solo 2>/dev/null | awk '$1=="identityagent" {print $2}') == none ]]
+git init -q "$HOME/Workspace/solo/example"
+[[ $(git -C "$HOME/Workspace/solo/example" config user.name) == Solo ]]
+[[ $(git -C "$HOME/Workspace/solo/example" ls-remote --get-url git@github.com:example-owner/repo) == git@gh-solo:example-owner/repo ]]
+# Metadata/source references do not require the original source file on reruns.
+mv "$VAULT_FIXTURE/personal" "$work/source-key"
+install >/dev/null
+mv "$work/source-key" "$VAULT_FIXTURE/personal"
+# Removing SSH/account participation leaves keys intact and removes active aliases.
+cp "$HOME/.ssh/workstation/solo" "$work/key-before"
+printf '\nHost unrelated\n User preserved\n' >> "$HOME/.ssh/config"
+install --profile "$work/identity.json" >/dev/null
+cmp "$work/key-before" "$HOME/.ssh/workstation/solo"
+! grep -q 'workstation/config' "$HOME/.ssh/config"
+ssh -G -F "$HOME/.ssh/config" unrelated 2>/dev/null | grep -Fxq 'user preserved'
+! git -C "$HOME/Workspace/solo/example" config --get user.name
+[[ ! -s $VAULT_CALLS ]]
+# Installed version-1 profiles migrate offline without changing legacy aliases.
+new_home legacy-local
+mkdir -p "$HOME/.config/git" "$HOME/.ssh/workstation" "$HOME/Workspace/personal"
+cp "$VAULT_FIXTURE/profile.json" "$HOME/.config/git/workstation-profile.json"
+for account in personal s5tech; do
+    cp "$VAULT_FIXTURE/$account" "$HOME/.ssh/workstation/$account"
+    cp "$VAULT_FIXTURE/$account.pub" "$HOME/.ssh/workstation/$account.pub"
+done
+printf '[user]\n name = Retained Legacy File\n' > "$HOME/Workspace/personal/.gitconfig"
+install >/dev/null
+[[ $(jq -r .version "$HOME/.config/git/workstation-profile.json") == 2 ]]
+[[ $(jq -r .accounts.personal.sshAlias "$HOME/.config/git/workstation-profile.json") == gh-p ]]
+grep -q 'Retained Legacy File' "$HOME/Workspace/personal/.gitconfig"
+[[ ! -s $VAULT_CALLS ]]
+# Arbitrary account names and identity-only accounts also work with Bitwarden.
+new_home dynamic-vault
+cat > "$VAULT_FIXTURE/profile.json" <<'JSON'
+{"version":2,"accounts":{"consulting":{"name":"Consultant","email":"consultant@example.invalid","workspace":"Clients/Active","sshKeyItem":"s5tech","sshAlias":"gh-clients","githubOwner":"example-clients"},"writer":{"name":"Writer","email":"writer@example.invalid"}}}
+JSON
+WORKSTATION_GIT_PROFILE_ITEM=ignored install --bitwarden --profile-item profile-id --no-input >/dev/null
+verify >/dev/null
+grep -q '^get item s5tech$' "$VAULT_CALLS"
+! grep -q '^get item personal$' "$VAULT_CALLS"
+[[ -f $HOME/.ssh/workstation/consulting && ! -e $HOME/.ssh/workstation/writer ]]
+git init -q "$HOME/Clients/Active/project"
+[[ $(git -C "$HOME/Clients/Active/project" config user.email) == consultant@example.invalid ]]
+cp "$VAULT_CALLS" "$work/calls-before"
+install >/dev/null
+cmp "$VAULT_CALLS" "$work/calls-before"
+# --no-input refuses login/unlock without creating or locking a CLI session.
+new_home locked-vault
+unset BW_SESSION
+export VAULT_STATE=locked
+: > "$VAULT_CALLS"
+expect_failure install --bitwarden --no-input
+grep -q 'supply an unlocked session' "$work/error"
+[[ $(cat "$VAULT_CALLS") == status && ! -e $HOME/.config ]]
+# A vault may hold metadata alone; its import also needs no OpenSSH calls.
+new_home vault-identity-only
+export VAULT_STATE=unlocked BW_SESSION=fixture-session
+cp "$work/identity.json" "$VAULT_FIXTURE/profile.json"
+mkdir "$work/no-ssh"
+cp "$work/forbidden-bin/ssh" "$work/forbidden-bin/ssh-keygen" "$work/no-ssh/"
+export PATH="$work/no-ssh:$real_path"
+: > "$VAULT_CALLS"
+install --bitwarden --profile-item workstation-git --no-input >/dev/null
+verify >/dev/null
+[[ ! -e $HOME/.ssh && ! -s $FORBIDDEN_CALLS ]]
+! grep -q '^get item' "$VAULT_CALLS"
+printf 'PASS optional identities/local keys/vault sources, arbitrary accounts, validation, offline reruns and account removal\n'
