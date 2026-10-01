@@ -139,3 +139,7 @@ Shell runtime tests require real installed dependencies. Fixture tests do not
 replace a clean-machine installation or a terminal smoke test.
 
 Read [module conventions](docs/module-conventions.md) before extending the repo.
+
+## License
+
+[MIT](LICENSE) © 2026 minhlu-i.
