@@ -11,7 +11,9 @@ exists. Existing identities, credentials and SSH configuration are preserved.
 Git must already be installed by [setup-tools](../setup-tools/README.md).
 `--configure-only` performs the same offline configuration. Invalid global config
 stops setup; a symlinked config requiring a write needs manual handling.
-Doctor checks only this basic setup.
+Doctor always checks basic setup. If managed personalization files exist, it also
+runs `verify-personal.sh` locally. Missing or damaged personal configuration fails
+that check; GitHub authentication remains a separate step.
 
 ## Optional Git personalization
 

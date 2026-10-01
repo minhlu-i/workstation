@@ -43,7 +43,7 @@ installing tools or checking Zed. It does not establish runtime readiness.
 
 ## Applications
 
-Bitwarden (`bw`), Codex (`codex`) and Claude Code (`claude`) are included on all
+Gum (`gum`), Bitwarden (`bw`), Codex (`codex`) and Claude Code (`claude`) are included on all
 supported platforms. Sign in and manage their settings separately. Optional
 [Git personalization](../setup-git/README.md) can use Bitwarden to restore keys;
 basic setup does not access the vault.

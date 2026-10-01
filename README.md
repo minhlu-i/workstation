@@ -51,7 +51,7 @@ Homebrew; common CLI tools use mise. Setup does not upgrade existing tools.
 Project runtimes belong in each project's `mise.toml`.
 
 The [CLI inventory](setup-tools/files/mise.toml) includes bat, eza, fd, ripgrep,
-jq, yq, delta, tldr, Bitwarden, Codex and Claude Code. Sign in to Codex and Claude
+jq, yq, delta, tldr, Gum, Bitwarden, Codex and Claude Code. Sign in to Codex and Claude
 and restore Zed settings separately.
 
 On Ubuntu, Docker uses its official APT repository. Setup adds your user to the
@@ -124,15 +124,23 @@ the migration created it. Details: [tools](setup-tools/README.md) ·
 ./setup-docker/verify.sh --tools-only  # skip the Docker runtime check
 ```
 
+In a terminal, doctor uses Gum for a framed title, spinner and colored results.
+Successful checks show one status line; failures show the check name, exit code,
+diagnostic output and a command to inspect the issue.
+Without a working Gum, with `NO_COLOR=1` or `TERM=dumb`, or when stdout/stderr is
+redirected, it keeps the plain text output. Doctor never installs Gum itself.
+
 Doctor checks tools, interactive shell startup, basic Git and the local Docker
-runtime. It reports all failures and exits nonzero if a required check fails.
+runtime. When managed Git personalization files exist, it also verifies saved
+identities and local SSH keys. Otherwise that check is skipped. It reports all failures and exits nonzero if a required check fails.
 It does not install or repair anything, check GitHub access, or run containers.
 
-Tests use temporary homes and command doubles. Test commands and prerequisites
-are documented in each module; the archive bootstrap test is:
+Tests use temporary homes and command doubles. Module tests are documented in
+each module. Root tests:
 
 ```bash
 ./tests/test-bootstrap
+./tests/test-doctor  # Python 3, Git, jq; terminal and personal checks
 ```
 
 Shell runtime tests require real installed dependencies. Fixture tests do not

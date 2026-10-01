@@ -26,7 +26,7 @@ expected=$'setup-tools/install.sh \nsetup-shell/install.sh \nsetup-git/install.s
 [[ $(cat "$CALLS") == "$expected" ]]
 grep -q 'Full workstation readiness is not assessed' "$workspace_test_dir/log"
 grep -Fxq 'PLANNED (not checked): setup-workspace' "$workspace_test_dir/log"
-grep -Fxq 'SKIP (not requested): Git personalization; identity and SSH authentication not checked' "$workspace_test_dir/log"
+grep -Fxq 'SKIP (not configured): Git personalization; no managed local configuration found' "$workspace_test_dir/log"
 grep -Fxq 'Optional next step: Git personalization (choose new / bitwarden).' "$workspace_test_dir/log"
 printf -v personal_hint '  bash %q' "$fixture/setup-git/install-personal.sh"
 [[ $(tail -1 "$workspace_test_dir/log") == "$personal_hint" ]]
@@ -73,5 +73,5 @@ cp "$HOME/.ssh/config" "$workspace_test_dir/ssh-before"
 ! git config --global --get user.name
 [[ ! -e $HOME/vault-calls && ! -e $HOME/Workspace && ! -e $HOME/.config/git ]]
 cmp "$workspace_test_dir/ssh-before" "$HOME/.ssh/config"
-grep -Fxq 'SKIP (not requested): Git personalization; identity and SSH authentication not checked' "$workspace_test_dir/log"
+grep -Fxq 'SKIP (not configured): Git personalization; no managed local configuration found' "$workspace_test_dir/log"
 printf 'PASS dispatch order, cwd/spaces, fail-fast status and doctor aggregation (test doubles)\n'

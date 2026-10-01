@@ -57,8 +57,10 @@ dotfile manager to this setup.
 ## Git
 
 Basic setup requires only Git. Set `init.defaultBranch=main` only when unset;
-preserve personal configuration. Doctor reports personalization as skipped.
-Default setup and bootstrap must never run personal entry points.
+preserve personal configuration. Doctor runs the local personal verifier when
+managed personalization files exist, including partial or damaged configuration.
+Skip it on unconfigured machines. Default setup and bootstrap must never run the
+personal installer; doctor must not authenticate to GitHub or the vault.
 
 Personalization supports arbitrary workspace identities with optional SSH. Sources
 are interactive `new`, local JSON or explicit Bitwarden imports. Collect GitHub

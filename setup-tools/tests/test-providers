@@ -13,7 +13,7 @@ source "$root/setup-tools/file-operations.bash"
 source "$root/setup-tools/dependencies.bash"
 # Every common CLI has an explicitly supplied external provider, independent of
 # packages installed on the host running this test.
-for command in bat bw claude codex delta eza fd jq rg tldr yq; do
+for command in bat bw claude codex delta eza fd gum jq rg tldr yq; do
     printf '#!/bin/sh\nexit 0\n' > "$HOME/bin/$command"
     chmod +x "$HOME/bin/$command"
 done
@@ -150,4 +150,19 @@ for command in claude codex; do
     grep -Fxq "Broken/missing mise tool: $command" "$HOME/ai-verify-error"
     mv "$HOME/missing-ai-cli" "$HOME/bin/mise-$command"
 done
+# mise use may write bare TOML keys; regenerate the owned manifest before doctor.
+printf '[tools]\n"gum" = "latest"\n' > "$HOME/gum-template.toml"
+printf '[tools]\ngum = "latest"\n' > "$HOME/gum-manifest.toml"
+printf '#!/bin/sh\nexit 1\n' > "$HOME/bin/gum"
+printf '#!/bin/sh\nexit 0\n' > "$HOME/bin/mise-gum"
+chmod +x "$HOME/bin/mise-gum"
+if verify_mise_tools "$HOME/gum-template.toml" "$HOME/gum-manifest.toml" > "$HOME/gum-error" 2>&1; then
+    fail 'Noncanonical managed manifest passed'
+fi
+grep -q 'Unexpected manifest content:' "$HOME/gum-error"
+cp "$HOME/manager-calls" "$HOME/calls-before"
+configure_mise_tools "$HOME/gum-template.toml" "$HOME/gum-manifest.toml" gum-manifest.toml --configure-only
+cmp "$HOME/calls-before" "$HOME/manager-calls"
+grep -Fxq '"gum" = "latest"' "$HOME/gum-manifest.toml"
+verify_mise_tools "$HOME/gum-template.toml" "$HOME/gum-manifest.toml"
 printf 'PASS provider reuse, offline manifests, missing/broken routing, AI CLI management and doctor dependencies (test doubles)\n'

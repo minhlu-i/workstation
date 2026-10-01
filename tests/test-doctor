@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+python3 - "$root" <<'PY'
+import errno
+import os
+from pathlib import Path
+import pty
+import select
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+
+with tempfile.TemporaryDirectory() as directory:
+    base = Path(directory)
+    repo = base / 'repo with spaces'
+    (repo / 'doctor').mkdir(parents=True)
+    shutil.copy(Path(sys.argv[1]) / 'doctor/check.sh', repo / 'doctor/check.sh')
+    binary = base / 'bin'
+    binary.mkdir()
+    calls = base / 'calls'
+    gum_calls = base / 'gum-calls'
+    env = dict(os.environ, HOME=str(base), TERM='xterm-256color',
+               PATH=f'{binary}:/usr/bin:/bin', CALLS=str(calls), GUM_CALLS=str(gum_calls))
+    env.pop('NO_COLOR', None)
+    for domain in ('setup-tools', 'setup-shell', 'setup-git', 'setup-docker'):
+        (repo / domain).mkdir()
+        (repo / domain / 'verify.sh').write_text('''#!/bin/bash
+id=${0%/verify.sh}; id=${id##*/}
+printf '%s %s\\n' "$id" "$*" >> "$CALLS"
+printf 'diagnostic stdout: %s\\n' "$id"
+printf 'diagnostic stderr: %s\\n' "$id" >&2
+[[ $id != "${FAIL_DOMAIN-}" ]]
+''')
+    fake = binary / 'gum'
+    fake.write_text('''#!/bin/bash
+[[ $1 != --version ]] || exit 0
+printf '%s\\n' "$1" >> "$GUM_CALLS"
+mode=$1; shift
+while (( $# )) && [[ $1 != -- ]]; do shift; done
+shift
+case $mode in
+style) printf '\\033[36m%s\\033[0m\\n' "$*" ;;
+spin) "$@" ;;
+esac
+''')
+    fake.chmod(0o755)
+    shutil.copy(fake, binary / 'installed-gum')
+
+    def run(terminal=False, **changes):
+        calls.write_text('')
+        gum_calls.write_text('')
+        run_env = dict(env, **changes)
+        command = ['bash', str(repo / 'doctor/check.sh'), '--shell', 'bash']
+        if not terminal:
+            result = subprocess.run(command, env=run_env, capture_output=True, timeout=20)
+            return result.returncode, result.stdout + result.stderr
+        master, slave = pty.openpty()
+        process = subprocess.Popen(command, env=run_env, stdin=slave, stdout=slave, stderr=slave)
+        os.close(slave)
+        output = bytearray()
+        deadline = time.monotonic() + 20
+        try:
+            while time.monotonic() < deadline:
+                if select.select([master], [], [], 0.1)[0]:
+                    try:
+                        data = os.read(master, 65536)
+                    except OSError as error:
+                        if error.errno == errno.EIO:
+                            break
+                        raise
+                    if not data:
+                        break
+                    output.extend(data)
+            else:
+                raise AssertionError('doctor did not finish')
+            return process.wait(timeout=2), bytes(output)
+        finally:
+            if process.poll() is None:
+                process.terminate()
+                process.wait(timeout=2)
+            os.close(master)
+
+    for changes in ({}, {'NO_COLOR': '1'}, {'NO_COLOR': '0'}, {'TERM': 'dumb'}):
+        code, output = run(terminal=bool(changes), **changes)
+        assert code == 0 and b'\x1b' not in output
+        assert not gum_calls.read_text()
+        assert 'setup-shell --shell bash' in calls.read_text()
+    code, output = run(FAIL_DOMAIN='setup-docker')
+    assert code == 1 and b'\x1b' not in output
+    assert b'diagnostic stderr: setup-docker' in output
+    assert len(calls.read_text().splitlines()) == 4
+    code, output = run(terminal=True)
+    assert code == 0 and b'WORKSTATION DOCTOR' in output and b'4 passed' in output
+    assert gum_calls.read_text().splitlines().count('spin') == 4
+    code, output = run(terminal=True, FAIL_DOMAIN='setup-tools')
+    assert code == 1 and b'3 passed' in output
+    assert b'FAIL setup-tools (exit 1)' in output
+    assert output.index(b'FAIL setup-tools') < output.index(b'diagnostic stdout: setup-tools')
+    assert b'Inspect:' in output
+    assert b'diagnostic stdout: setup-tools' in output
+    assert b'diagnostic stderr: setup-tools' in output
+    assert len(calls.read_text().splitlines()) == 4
+
+    # Run the actual personal verifier against an identity-only temporary home.
+    if os.environ.get('DOCTOR_TEST_GUM'):
+        shutil.copy(os.environ['DOCTOR_TEST_GUM'], fake)
+    source = Path(sys.argv[1])
+    for name in ('install-personal.sh', 'verify-personal.sh', 'common.bash',
+                 'personal.bash', 'profile.jq'):
+        shutil.copy(source / 'setup-git' / name, repo / 'setup-git' / name)
+    shutil.copytree(source / 'setup-git/files', repo / 'setup-git/files')
+    shutil.copy(source / 'setup-tools/file-operations.bash', repo / 'setup-tools/file-operations.bash')
+    for name in ('git', 'jq'):
+        executable = shutil.which(name)
+        assert executable, f'{name} is required for personal doctor tests'
+        (binary / name).symlink_to(executable)
+    env['GIT_CONFIG_NOSYSTEM'] = '1'
+    for name in ('GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM', 'GIT_CONFIG_COUNT',
+                 'GIT_CONFIG_PARAMETERS', 'XDG_CONFIG_HOME'):
+        env.pop(name, None)
+    profile = base / 'identity.json'
+    profile.write_text('{"version":2,"accounts":{"developer":{"name":"Example","email":"dev@example.invalid","workspace":"Projects/Code"}}}')
+    install = subprocess.run(['bash', str(repo / 'setup-git/install-personal.sh'),
+                              '--profile', str(profile), '--no-input'],
+                             env=env, capture_output=True, timeout=20)
+    assert install.returncode == 0, install.stderr.decode()
+    for terminal in (False, True):
+        code, output = run(terminal=terminal)
+        assert code == 0 and b'PASS setup-git-personal' in output
+        assert b'SKIP (not configured)' not in output and b'Optional next step' not in output
+        if terminal:
+            assert b'5 passed' in output
+        assert len(calls.read_text().splitlines()) == 4
+        identity = base / '.config/git/workstation-identities/developer.gitconfig'
+        identity.chmod(0o644)
+        code, output = run(terminal=terminal, FAIL_DOMAIN='setup-docker')
+        assert code == 1 and b'FAIL setup-git-personal (exit 1)' in output
+        assert b'developer identity must have mode 600' in output
+        assert b'FAIL setup-docker' in output
+        assert b'Inspect:' in output
+        assert output.index(b'FAIL setup-git-personal') < output.index(b'developer identity must have mode 600')
+        identity.chmod(0o600)
+    saved = base / '.config/git/workstation-profile.json'
+    saved.write_text('invalid JSON')
+    code, output = run(terminal=True)
+    assert code == 1 and b'Invalid Git profile:' in output
+    saved.unlink()
+    code, output = run(terminal=True)
+    assert code == 1 and b'Local Git profile missing' in output
+    assert b'SKIP (not configured)' not in output
+    shutil.rmtree(base / '.config')
+    (base / '.gitconfig').unlink()
+    saved.parent.mkdir(parents=True)
+    saved.symlink_to(base / 'missing-profile')
+    code, output = run()
+    assert code == 1 and b'FAIL setup-git-personal' in output
+    assert b'SKIP (not configured)' not in output
+    shutil.rmtree(base / '.config')
+
+    fake.unlink()
+    fake.write_text('#!/bin/bash\nexit 99\n')
+    fake.chmod(0o755)
+    code, output = run(terminal=True)
+    assert code == 0 and b'WORKSTATION DOCTOR' not in output
+    assert not gum_calls.read_text()
+
+    shims = base / '.local/share/mise/shims'
+    shims.mkdir(parents=True)
+    shim = shims / 'gum'
+    shim.write_text('#!/bin/bash\nprintf shim >> "$GUM_CALLS"\nexit 99\n')
+    shim.chmod(0o755)
+    mise = binary / 'mise'
+    mise.write_text(f'#!/bin/bash\n[[ "$*" == "which gum" ]] || exit 99\nprintf "%s\\n" "{binary}/installed-gum"\n')
+    mise.chmod(0o755)
+    code, output = run(terminal=True, PATH=f'{shims}:{env["PATH"]}')
+    assert code == 0 and b'WORKSTATION DOCTOR' in output
+    assert 'shim' not in gum_calls.read_text()
+
+    if os.environ.get('DOCTOR_TEST_GUM'):
+        shutil.copy(os.environ['DOCTOR_TEST_GUM'], fake)
+        for failure in ('', 'setup-docker'):
+            code, output = run(terminal=True, FAIL_DOMAIN=failure)
+            assert code == bool(failure), output.decode(errors='replace')
+            assert b'WORKSTATION DOCTOR' in output
+            assert len(calls.read_text().splitlines()) == 4
+            if failure:
+                assert b'diagnostic stdout: setup-docker' in output
+                assert b'diagnostic stderr: setup-docker' in output
+        print('PASS real Gum rendering and spinner success/failure (PTY; verifier doubles)')
+print('PASS doctor TTY/plain output, NO_COLOR, dumb terminal, failures and mise resolution')
+PY
