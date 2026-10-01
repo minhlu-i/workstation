@@ -1,7 +1,6 @@
 # Setup workspace
 
-Status: **planned**.
+Planned: workspace directories and repository organization.
 
-Responsibility: Workspace directories and repository organization; project runtime requirements remain in project mise.toml files.
-
-No installer or verifier exists yet. Setup and doctor do not execute this domain.
+No installer or verifier exists yet. Setup and doctor skip this module.
+Project runtime requirements stay in each project's `mise.toml`.

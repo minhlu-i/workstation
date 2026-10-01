@@ -10,32 +10,44 @@ blockedBy: []
 blocks: []
 created: 2026-09-21
 ---
-# Idempotent Bash Workstation Setup
 
-## Outcome, constraints, and non-goals
-`./setup-bash-workstation` installs and verifies the Bash module without an orchestrator or another module. Runs converge safely, back up replacements, and preserve user files. Support Ubuntu/WSL2 with Bash 5.3+; keep a platform seam for future macOS but do not implement it. Install globally through mise: latest `bat`, `delta`, `eza`, `fd`, `jq`, `ripgrep`, `starship`, `tealdeer`, `yq`, `zoxide`, and `github:HalFrgrd/flyline`. Follow the established ownership and temporary-home rules in [module conventions](../../docs/module-conventions.md); do not write unrelated project/home paths.
+# Bash workstation setup
 
-## Architecture and data flow
-The root launcher resolves its repository path and delegates to `install` or `verify`. Install detects platform/Bash, preflights inputs, backs up changed files, copies deterministic templates into `~/.config/bash`, writes a separate mise `conf.d` fragment, installs tools, and places only a guarded bootstrap in `~/.bashrc`. Startup sources numbered rc files then user `local.bash`; tool rc dynamically locates Flyline. Verify reads installed state and exercises an interactive subprocess. Tests redirect `HOME` and may reuse a read-only host `MISE_DATA_DIR`.
+Completed on 2026-09-21. This records the original standalone Bash module;
+the repo now uses separate tools, shell, Git and Docker modules. See the
+[current README](../../README.md) for installation.
 
-## Phase and dependency
-| Phase | Status | Blocker | Deliverable |
-|---|---|---|---|
-| [Build, test, and document the module](./phase-01-module.md) | Complete | None | Installer, verifier, templates, tests, module docs |
+## Scope
 
-## Acceptance
-- `bash -n` passes; isolated install succeeds twice without duplicate sources or needless second-run backups.
-- Existing replaced files are backed up; `local.bash` and `45-user-aliases.bash` remain byte-identical.
-- Fresh interactive Bash loads completion, mise/zoxide, dynamic Flyline, plain bracketed Starship, and every prior `PROMPT_COMMAND` hook.
-- `fc -ln -0` supplies a once-per-session history hint without wrappers; focused tests prove hook/hint behavior.
-- Verify succeeds on intact state and pinpoints broken files, tools, sources, or hooks; real Bash 5.3 runs where available.
+Build `setup-bash-workstation` for Ubuntu / WSL2 with Bash 5.3+, repeatable
+installation, backups and preserved user customizations. macOS was deferred.
 
-## Decision, trade-off, and rollback
-**Default decision:** Bash older than 5.3 fails with upgrade guidance after apt; this preserves the requested package-manager ownership. No source-build fallback was authorized. Managed files use copies: they survive checkout moves, but updates require rerunning install; symlinks update immediately but break when the checkout moves. Better approaches: none — the requested modular design fits independent installation and verification. Rollback restores latest backups, removes only module-created managed files and its mise fragment, and preserves user files/shared mise data.
+The original global mise inventory was bat, delta, eza, fd, jq, ripgrep, Starship,
+tealdeer, yq, zoxide and Flyline. Bash used APT; versions below 5.3 stopped setup
+with upgrade instructions. No source-build fallback was included.
 
-## Verification evidence
-Completed isolated-home repeated generation, backups/user preservation, PATH and hint
-tests; real installed mise tools, Bash 5.3.9, Flyline 1.8.0, completion and Starship
-checks; scalar/array hook retention and execution; Git/Python prompt rendering;
-negative verification for a missing fragment. Fresh-OS apt/download paths remain
-unvalidated: user directed reuse of installed tools, with no reinstall.
+## Design
+
+The launcher resolved its repo path and delegated to install or verify. Install
+preflighted platform and input, backed up changed files, copied templates into
+`~/.config/bash`, wrote a mise fragment and installed missing tools.
+`~/.bashrc` contained a guarded loader; numbered fragments loaded before `local.bash`.
+
+Flyline was located through mise at runtime. Verification exercised an interactive
+shell. Tests used temporary homes and could reuse read-only host `MISE_DATA_DIR`.
+
+Copied configuration survives checkout moves; updating it requires rerunning setup.
+Recovery restores backups and removes only newly created managed files, preserving
+user files and shared tools.
+
+## Delivery and verification
+
+[Phase 1](phase-01-module.md) completed installer, verifier, templates, tests and docs.
+
+Checks passed for syntax, repeated installation, backup creation, user-file
+preservation, PATH, session hints, completion, Flyline and Starship. Existing scalar
+and array `PROMPT_COMMAND` hooks ran once. Verification identified a deliberately
+missing fragment. Git/Python prompt rendering also passed.
+
+Real dependency checks used Bash 5.3.9 and Flyline 1.8.0. Fresh-OS APT/download
+installation remained untested; the user requested reuse of installed tools.

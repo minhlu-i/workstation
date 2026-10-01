@@ -1,9 +1,7 @@
 # Setup tools
 
-Checks Homebrew, mise, base commands (`curl`, `git`, `less`, `xz`) and the common
-CLI inventory in [files/mise.toml](files/mise.toml). Reuses working executables before
-considering installation, independently of their package manager. It never removes
-apt packages or automatically upgrades existing tools.
+Installs missing base commands, common CLI tools and Zed. Working tools on `PATH`
+are reused regardless of their package manager.
 
 ```bash
 ./setup-tools/install.sh
@@ -11,56 +9,69 @@ apt packages or automatically upgrades existing tools.
 ./setup-tools/verify.sh
 ```
 
-Missing Homebrew uses its official installer after the [bootstrap helper](bootstrap.bash)
-prepares missing OS prerequisites. Ubuntu uses sudo + apt-get; macOS requests CLT
-and rechecks completion. Authentication happens at privileged steps through sudo;
-see the root [bootstrap instructions](../README.md#platforms-and-package-ownership).
-Missing base commands and mise use brew. Missing common CLI use mise with the
-existing `latest` policy. Existing resolved mise installations are reused.
-No project language runtimes or project requirements belong here.
+## Package managers
 
-The CLI inventory includes Bitwarden CLI (`bw`, mise tool `bitwarden`), Codex CLI
-(`codex`) and Claude Code CLI (`claude`) on
-macOS, Ubuntu and WSL2. Missing installations use the corresponding
-[mise registry](https://mise.jdx.dev/registry) entries; working external installs
-(including Homebrew or native installers) are reused. Setup does not install a
-global Node.js runtime for these tools or upgrade existing installations.
-Doctor checks `--version`, not account access. Optional Git personalization can
-use bw to restore profiles/local keys, or use a local profile without bw. Basic
-setup does not access the vault. See [setup-git](../setup-git/README.md). Run `codex` or `claude` yourself
-after setup to sign in; credentials, settings, skills and plugins remain user-owned.
-See [Codex CLI](https://developers.openai.com/codex/cli) and
-[Claude Code setup](https://code.claude.com/docs/en/setup).
+| Dependency | Installation source |
+| --- | --- |
+| Homebrew | Official installer |
+| Homebrew prerequisites | APT on Ubuntu; Xcode Command Line Tools on macOS |
+| mise, curl, git, less, xz | Homebrew |
+| [Common CLI](files/mise.toml) | mise |
+| Zed | Homebrew cask on macOS; official installer on native Ubuntu |
 
-The [dependency checks](dependencies.bash) preserve existing PATH precedence and
-avoid executing mise shims during discovery. External tools are checked with
-`--version`; yq additionally requires the Mike Farah implementation. The manifest
-at `~/.config/mise/conf.d/bash-workstation.toml` contains only the subset requiring
-mise. This legacy filename is preserved to migrate the old combined file in place.
-Other mise configuration remains user-owned. Doctor validates the allowed manifest
-subset and the actual provider of each required tool; it does not require that brew
-or mise own an otherwise working external executable.
+Setup checks existing capabilities first and installs only what is missing. It
+keeps existing packages and does not upgrade them. Broken providers require repair;
+`yq` must be the Mike Farah implementation.
 
-Before replacing an old combined manifest, the shell-owned
-[migration helper](../setup-shell/manifest.bash) preserves its shell declarations.
-Shell dependencies and their separate manifest belong to
-[setup-shell](../setup-shell/README.md).
+If Homebrew is missing, Ubuntu installs missing prerequisite packages with
+`apt-get --no-upgrade`. macOS requests Command Line Tools and stops if installation
+is unfinished. Sudo handles authentication directly in your terminal. See the
+[root installation guide](../README.md#platforms-and-package-ownership).
 
-The shared [file writer](file-operations.bash) preserves atomic replacement,
-backups and user files. Its existing backup location remains
-`~/.local/state/workstation/bash-workstation/backups/`. Restore home-relative paths
-from the printed backup directory; see root [migration recovery](../README.md#configuration-migration-and-recovery)
-when restoring an old combined manifest. Do not uninstall shared tool installations
-as part of configuration recovery.
+## Configuration
 
-Zed is installed only when missing: the [Homebrew cask](https://formulae.brew.sh/cask/zed)
-on macOS and the [official installer](https://zed.dev/docs/installation) on native
-Ubuntu. WSL skips both installation and verification; install the Windows editor
-separately. Linux does not use a Homebrew cask or a mise tool declaration.
-Existing working Zed installations are reused; broken/partial installations require
-manual repair. Linux installs to `~/.local/zed.app` with a CLI in `~/.local/bin`.
-Setup does not launch Zed or manage settings/extensions; restore your online
-configuration manually. `--configure-only` does not install or check Zed.
-Doctor checks CLI availability, not graphical startup, GPU support or settings sync.
+`~/.config/mise/conf.d/bash-workstation.toml` declares only common CLI tools that
+need mise, using `latest`. Working external tools are omitted. Other mise files
+are preserved; project runtimes belong in each project's `mise.toml`.
 
-Run `bash setup-tools/tests/test-zed` for isolated platform/provider fixtures.
+Shell dependencies belong to [setup-shell](../setup-shell/README.md). When replacing
+an old combined manifest, setup preserves its shell declarations in
+`setup-shell.toml` first.
+
+`--configure-only` writes configuration from discoverable executables without
+installing tools or checking Zed. It does not establish runtime readiness.
+
+## Applications
+
+Bitwarden (`bw`), Codex (`codex`) and Claude Code (`claude`) are included on all
+supported platforms. Sign in and manage their settings separately. Optional
+[Git personalization](../setup-git/README.md) can use Bitwarden to restore keys;
+basic setup does not access the vault.
+
+Zed is installed only on macOS and native Ubuntu. On Linux it lives at
+`~/.local/zed.app`, with its CLI in `~/.local/bin`. On WSL2, install the Windows
+editor separately. Restore settings and extensions yourself.
+
+## Verification and recovery
+
+Verification checks executable versions, providers and the managed manifest.
+Zed checks cover CLI availability; graphical startup and settings sync need a
+manual check.
+
+Changed files are backed up under
+`~/.local/state/workstation/bash-workstation/backups/`. Restore affected
+home-relative paths from the printed directory. See
+[manifest recovery](../README.md#configuration-migration-and-recovery) when restoring
+an old combined manifest.
+
+## Tests
+
+```bash
+./setup-tools/tests/test-providers
+./setup-tools/tests/test-bootstrap
+./setup-tools/tests/test-configure
+./setup-tools/tests/test-dispatch
+./setup-tools/tests/test-zed
+```
+
+Tests use temporary homes and command doubles; they do not install packages on the host.

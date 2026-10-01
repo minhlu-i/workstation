@@ -1,98 +1,113 @@
 # Module conventions
 
-Domains live directly at root: setup-tools, setup-shell, setup-git,
-setup-docker and setup-workspace. Implemented domains own install.sh, verify.sh,
-tests/ and files/ when deploying configuration. Planned domains have a README only, never a success-returning
-installer. Platform-specific files are introduced only for real implementation.
+Modules live at the repo root. Implemented modules own `install.sh`, `verify.sh`,
+`tests/` and configuration templates in `files/` as needed. Planned modules have
+only documentation. Add platform-specific files when implementing that platform.
 
-setup.sh explicitly runs tools → shell → Git → Docker → doctor, stops on installation failure and
-identifies the step. Doctor aggregates implemented verifiers and distinguishes
-planned domains. Keep dispatch explicit; no plugin registry or framework. Resolve
-paths relative to each entry point, independent of the caller's directory.
+## Entry points
 
-Root bootstrap.sh owns downloading the public main archive without Git/login and
-running setup.sh from ~/.local/share/workstation. It requires existing Bash/curl/tar
-and standard filesystem utilities, preserves terminal input, forwards shell
-selection, and never invokes personalization. Download/extraction must complete
-before replacing a bootstrap-owned copy; preserve that copy as a backup and refuse
-unmanaged destinations/symlinks. A failed setup retains the downloaded source for
-manual continuation. Archive updates and checkout Git updates remain separate.
+`setup.sh` runs tools → shell → Git → Docker → doctor. It stops at the first
+installation failure and names the failed step. Doctor runs all implemented
+verifiers, aggregates failures and reports planned modules separately.
 
-Each dependency/configuration has one domain owner, independently of its installed
-provider. Check actual capability before installing; a working apt/system/brew/mise
-tool does not need a second installation just because the preferred manager does
-not own it. Do not uninstall, take over or silently upgrade existing tools.
+Keep dispatch explicit. Resolve paths from each entry point so commands work from
+any directory.
 
-- setup-tools owns Homebrew bootstrap, mise/base-command checks, common CLI and
-  Zed installation (macOS cask, official Linux installer, skipped on WSL).
-  Zed settings/extensions are restored by the user from their online configuration.
-  Missing CLI additions use brew/mise. Missing Homebrew bootstrap prerequisites
-  use apt-get/CLT within setup: sudo owns password entry; never capture credentials.
-  Fail clearly on cancelled/noninteractive authentication and incomplete CLT.
-- setup-shell owns Bash/Zsh, their completion/editor plugins, Starship/zoxide,
-  Flyline on Bash, and their configuration. Native selection is Ubuntu/WSL2 Bash
-  and macOS Zsh. No login-shell/default-profile changes.
-- Existing managed mise paths remain: bash-workstation.toml for common CLI and
-  setup-shell.toml for shell tools under ~/.config/mise/conf.d/. Manifests contain
-  the approved subset needing mise; working external tools are omitted. The
-  latest/missing-only policy remains for mise-managed entries.
-- setup-git defaults to basic Git checks and init.defaultBranch=main only when
-  no global default exists. Reuse existing preferences; never create/update
-  identity, SSH or vault files in this path. Basic checks need Git only and doctor
-  reports personalization as SKIP. Git installation remains owned by setup-tools.
-  The optional install-personal.sh/verify-personal.sh entry points accept arbitrary
-  workspace identities and optional SSH keys. Sources are an explicit local JSON
-  profile or Bitwarden Secure Note/SSH key items. Interactive new mode collects
-  GitHub username/email, a separate author name (defaulting to username) and
-  workspace, generates an Ed25519 pair with ssh-keygen and saves its profile
-  automatically; existing valid keys are reused. First interactive setup offers
-  new/bitwarden choices. Bitwarden lists SSH-key metadata in a native multi-select
-  checkbox menu, then collects GitHub usernames, emails, separate author names and
-  workspaces, and creates selected folders. Preserve saved defaults independently;
-  SSH transport selects keys by workspace, never by repository owner or author name.
-  Per-workspace core.sshCommand covers existing repositories; setup-git owns
-  40-git-workspace fragments in both shell rc.d directories for pre-clone selection.
-  Preserve user-owned local/alias files and explicit transport overrides.
-  Store item IDs to resolve duplicate names; cached refresh needs no chooser/note.
-  Explicit Secure Note import remains compatible. No-source reruns stay offline;
-  no implicit vault login. Version-1 profiles remain compatible. Identity-only
-  setup needs Git/jq; SSH/bw dependencies apply only when their features are chosen.
-  Private files use mode 600 and SSH directories mode 700; managed aliases disable
-  agents. Stage/validate imports, lock setup-owned sessions and never log key JSON
-  or remove passphrases. Rotation backups contain private keys. Default orchestration
-  must not invoke these personal entry points.
-- setup-docker owns OrbStack on macOS and native Engine on Ubuntu/WSL2, plus CLI,
-  Compose and Buildx. OrbStack's cask supplies macOS tools; Linux uses official
-  Docker APT packages, an exception to common-tool brew/mise ownership. Reuse
-  working providers; never remove/upgrade packages or change Docker contexts.
-  First launch, WSL systemd configuration and relogin remain manual. After tool
-  verification, Linux setup adds the current non-root user to the docker group
-  when needed, preserves other groups and explains root-equivalent access. Check
-  saved versus active membership and print relogin/WSL restart instructions when
-  the session is stale; doctor must still fail on inaccessible sockets. Only
-  a newly installed Linux Engine is explicitly enabled/started. Tools-only checks
-  never probe the daemon; doctor requires the selected platform's local socket.
-- Project runtimes belong to each project's mise.toml. Planned domains own no
-  current files. Personal mise files and shell customizations remain user-owned.
+`bootstrap.sh` downloads public `main` without Git or a login, then runs setup from
+`~/.local/share/workstation`. It requires Bash, curl, tar and filesystem utilities,
+preserves terminal input and forwards shell selection. Complete download and
+extraction before replacing a managed copy. Back up that copy; refuse unmanaged
+paths and symlinks. Keep downloaded source after setup failure for continuation.
+Archive updates use bootstrap; checkouts use Git.
 
-Keep files/bash and files/zsh modular within setup-shell; share Starship's config,
-not shell-specific syntax or hooks. Preserve deployed Bash paths. New Zsh paths
-mirror Bash, with highlighting loaded after local widgets. No Oh My Zsh, Atuin/fzf
-or additional dotfile manager is introduced.
+## Ownership
 
-Managed output is deterministic. Back up changed files before atomic replacement;
-never append startup blocks or overwrite user-owned local/alias files. The two
-domains share setup-tools/file-operations.bash and provider helpers because they
-use the same ownership rules. Preserve the legacy backup location, including for
-Zsh. Document partial migration/recovery; installation is not transactional.
+| Module | Owns |
+| --- | --- |
+| `setup-tools` | Homebrew bootstrap, mise, base commands, common CLI, Zed |
+| `setup-shell` | Bash/Zsh, completion/plugins, Flyline, Starship, zoxide, shell configuration |
+| `setup-git` | Default branch; separate optional identities, keys and workspace selection |
+| `setup-docker` | OrbStack/native Engine, Docker CLI, Compose, Buildx |
+| `setup-workspace` | Planned; no deployed files |
 
-Configure-only never invokes package managers/downloaders and does not promise
-runtime readiness. Doctor never installs or repairs configuration; it checks
-capabilities and configuration, not package-manager ownership alone. Interactive
-verification executes personal startup code and may create normal runtime caches.
+Each dependency has one module owner, regardless of its installed provider.
+Check capabilities before installing. Reuse working system, APT, Homebrew or mise
+tools. Do not remove, adopt or silently upgrade existing tools. Project runtimes
+belong in project `mise.toml` files.
 
-Tests use temporary homes. Distinguish fixture/provider tests, real shell behavior,
-actual installed dependency runtime and clean-machine bootstrap. Report missing
-prerequisites explicitly, never as passes. Keep upstream plugin init assumptions
-verified; shell hook names differ between Bash and Zsh. macOS and Ubuntu support
-must be reported with actual verification limits, not inferred from path detection.
+Common CLI declarations use
+`~/.config/mise/conf.d/bash-workstation.toml`; shell declarations use
+`setup-shell.toml` in the same directory. Include only tools needing mise, using
+`latest`. Preserve unrelated mise files.
+
+## Tools and shell
+
+Missing Homebrew prerequisites use APT on Ubuntu or Command Line Tools on macOS.
+Sudo handles passwords directly; never capture credentials. Fail clearly on
+cancelled authentication, missing noninteractive authorization or unfinished CLT.
+Zed uses the macOS cask or official native Ubuntu installer; WSL skips it.
+Settings and extensions remain user-managed.
+
+Use Bash on Ubuntu / WSL2 and Zsh on macOS. Preserve login shells and profiles.
+Keep Bash/Zsh templates modular with native syntax and hooks; share Starship's
+configuration. Preserve deployed Bash paths and mirror responsibilities for Zsh.
+Load Zsh highlighting after local widgets. Do not add Oh My Zsh, Atuin, fzf or a
+dotfile manager to this setup.
+
+## Git
+
+Basic setup requires only Git. Set `init.defaultBranch=main` only when unset;
+preserve personal configuration. Doctor reports personalization as skipped.
+Default setup and bootstrap must never run personal entry points.
+
+Personalization supports arbitrary workspace identities with optional SSH. Sources
+are interactive `new`, local JSON or explicit Bitwarden imports. Collect GitHub
+username, email, author name and workspace separately; retain saved defaults.
+`new` generates Ed25519 keys and saves a profile. The Bitwarden chooser lists SSH
+key metadata, imports selected IDs and creates selected workspace directories.
+Keep duplicate vault names unambiguous. Retain version-1 and Secure Note support.
+No-source reruns stay offline; refresh reuses saved references.
+
+Select SSH keys by workspace. Existing repositories use `core.sshCommand`;
+pre-clone commands use Git-owned `40-git-workspace` fragments for both shells.
+Preserve explicit transport overrides and user local/alias files.
+
+Require jq for personalization, OpenSSH for keys and bw for vault access. Stage
+and validate imports before deployment. Private files use mode 600; SSH directories
+use mode 700. Managed aliases disable agents. Never log key JSON or remove
+passphrases. Lock setup-owned vault sessions. Rotation backups contain private keys.
+
+## Docker
+
+Use the OrbStack cask on macOS and official Docker APT packages on Ubuntu / WSL2.
+Reuse working providers; preserve packages and contexts. Enable/start only a newly
+installed Linux Engine.
+
+First launch, WSL systemd configuration and relogin are manual steps. After tool
+verification, add the current non-root user to `docker` when needed, preserving
+other groups. Explain root-equivalent access and distinguish saved membership
+from the active session. Print continuation instructions for stale sessions.
+Doctor must fail on inaccessible sockets. Tools-only checks skip the daemon;
+runtime checks require the selected platform's local socket.
+
+## Writes and recovery
+
+Generate deterministic output. Back up changed files before atomic replacement.
+Seed user local/alias files only when absent; preserve additional user fragments.
+Avoid appending duplicate startup blocks.
+
+Use shared `setup-tools/file-operations.bash` and provider helpers. Retain the
+legacy backup directory for both shells. Document partial migration recovery;
+installation does not roll back earlier steps on failure.
+
+Configure-only must not invoke package managers or downloaders. It does not promise
+runtime readiness. Doctor verifies capabilities and configuration without repairs.
+Interactive checks execute personal startup code and may create normal caches.
+
+## Tests
+
+Use temporary homes. Report fixture tests, real shell tests, installed dependency
+checks and clean-machine installation separately. Missing prerequisites must not
+count as passes. Test upstream plugin initialization and each shell's hook behavior.
+State actual macOS/Ubuntu verification limits rather than inferring support from
+path detection.

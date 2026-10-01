@@ -1,87 +1,87 @@
 # Setup Docker
 
-Implemented: OrbStack on macOS; native Docker Engine on Ubuntu/WSL2 Ubuntu;
-Docker CLI, Compose and Buildx on both platforms.
+OrbStack on macOS; native Docker Engine on Ubuntu / WSL2 Ubuntu. Both include
+Docker CLI, Compose and Buildx.
 
 ```bash
 ./setup-docker/install.sh
-./setup-docker/verify.sh --tools-only  # installation/capabilities; no daemon probe
-./setup-docker/verify.sh               # also checks selected local Engine
+./setup-docker/verify.sh --tools-only
+./setup-docker/verify.sh
 ```
 
-Run setup as your normal user. Installation checks tools before returning success;
-it does not claim the Engine is reachable. There is no configure-only mode.
+Run as your normal user. There is no configure-only mode. Installation checks the
+tools; default verification also requires a reachable local Engine.
 
 ## macOS
 
-The installer reuses OrbStack in `/Applications` or `~/Applications`, or installs
-the missing Homebrew `orbstack` cask. OrbStack supplies its Docker CLI and plugins;
-setup does not install separate Homebrew Docker formulas or launch the app.
+Setup reuses OrbStack in `/Applications` or `~/Applications`, or installs the
+Homebrew cask. OrbStack supplies its CLI and plugins.
 
-**First launch is a manual boundary:** open OrbStack and complete its setup, then
-rerun the installer. Before first launch, missing CLI/plugins make installation
-fail with instructions, even when the app was successfully installed. Existing
-CLI providers are reused if working; broken providers require manual repair.
-OrbStack's own first launch can install CLI links and update its compatibility
-socket; see [OrbStack installation](https://docs.orbstack.dev/install).
+Open OrbStack once and complete its setup, then rerun the installer. Missing
+first-launch tools cause installation to stop with instructions. Setup does not
+launch the app. See [OrbStack installation](https://docs.orbstack.dev/install).
 
-## Ubuntu and WSL2 Ubuntu
+## Ubuntu and WSL2
 
-[linux.bash](linux.bash) adds the official Docker APT repository when needed and
-installs only missing capabilities. A complete working provider is reused. An
-incomplete conflicting or unmanaged provider, ambiguous repository configuration,
-or an APT transaction that would change existing packages stops with a repair
-message. Setup does not remove packages, upgrade existing packages or migrate data.
-See [Docker's Ubuntu installation guide](https://docs.docker.com/engine/install/ubuntu/).
+Missing capabilities use Docker's official APT repository. A complete working
+provider is reused. Conflicting packages, ambiguous repository configuration or
+an APT transaction that would change existing packages stop setup for manual repair.
+See [Docker installation](https://docs.docker.com/engine/install/ubuntu/).
 
-Installation is not transactional: added repository files, signing keys and
-successfully installed packages may remain after a later failure. Read the error,
-repair the reported condition and rerun; setup does not automatically roll back
-those additions.
+Installing packages requires sudo and running systemd. A newly installed Engine
+is enabled and started. Start an existing stopped Engine yourself:
 
-Installing missing packages requires running systemd and sudo authorization. Only
-a freshly installed Engine is explicitly enabled and started; setup leaves an
-existing stopped Engine alone. Start it yourself when ready with
-`sudo systemctl start docker`.
+```bash
+sudo systemctl start docker
+```
 
-On WSL2, enable systemd if needed using
-[Microsoft's instructions](https://learn.microsoft.com/en-us/windows/wsl/systemd),
-then run `wsl.exe --shutdown` from Windows and reopen Ubuntu before retrying.
-Setup does not edit `/etc/wsl.conf` or configure Docker Desktop integration.
+On WSL2, [enable systemd](https://learn.microsoft.com/en-us/windows/wsl/systemd)
+if needed, run `wsl.exe --shutdown` from Windows, and reopen Ubuntu. Setup does not
+edit `/etc/wsl.conf` or configure Docker Desktop integration.
 
-After checking installed tools, setup adds the current non-root user to the
-`docker` group with `sudo usermod -aG docker USER` when membership is missing,
-including when it reuses an existing Engine. Other group memberships are preserved;
-reruns do not repeat the change. The group grants root-equivalent privileges, as
-described in [Docker's post-installation steps](https://docs.docker.com/engine/install/linux-postinstall/).
+After checking tools, setup adds your user to the `docker` group if needed,
+preserving other memberships. This grants
+[root-equivalent access](https://docs.docker.com/engine/install/linux-postinstall/).
+Log out and back in to activate the change; on WSL2, shut down WSL and reopen it.
+Then check:
 
-Saved membership does not update an already-running session. Setup detects this
-and prints continuation instructions: log out/back in, or on WSL2 run
-`wsl --shutdown` from Windows and reopen Ubuntu. Then run `docker info` and
-`bash ~/.local/share/workstation/doctor/check.sh` (archive installation).
-Doctor still runs as your current user and fails if that session cannot access
-the socket; it never changes groups or uses sudo to hide this failure. Do not run
-the entire setup as root. `sudo docker info` can separately check privileged access.
+```bash
+docker info
+./doctor/check.sh
+```
 
-## Verification and scope
+Doctor uses your current permissions and fails if the session cannot access the socket.
 
-[verify.sh](verify.sh) checks the platform runtime installation and working
-`docker`, `docker compose`, and `docker buildx` commands. Default verification also
-resolves the selected endpoint using Docker precedence: `DOCKER_CONTEXT`, then
-`DOCKER_HOST`, then the current context. It must identify the OrbStack socket
-`~/.orbstack/run/docker.sock` on macOS or `/var/run/docker.sock` on Linux. Selected
-aliases to the same socket are accepted, but Linux's canonical `docker.sock` must
-itself be a socket, not a leaf symlink forwarding to another runtime such as Docker
-Desktop's WSL integration. Remote endpoints and other local runtimes do not
-count as readiness for this domain. Correct overrides or select the intended
-context yourself; the scripts never switch it.
+## Verification
 
-Runtime verification uses `docker info` to require a reachable Linux Engine. It
-does not pull images, run containers, start services, alter contexts or repair
-configuration. Consequently a stopped runtime, stale context or missing socket
-permission makes doctor fail even after tools installation succeeds.
+`--tools-only` checks Docker, Compose and Buildx without probing the daemon.
+Default verification also runs `docker info` against the selected endpoint.
 
-One setup command can install dependencies, but OrbStack first launch, WSL restart
-and activating updated group membership through relogin remain manual steps. Tests use isolated
-homes and command doubles; they do not provision the host or prove clean-machine
-installation or real container execution.
+Endpoint selection follows `DOCKER_CONTEXT`, then `DOCKER_HOST`, then the current
+context. It must resolve to the platform's local socket:
+
+| Platform | Socket |
+| --- | --- |
+| macOS | `~/.orbstack/run/docker.sock` |
+| Ubuntu / WSL2 | `/var/run/docker.sock` |
+
+Contexts pointing to the same socket are accepted. Linux's canonical socket must
+be an actual socket, rather than a symlink to another runtime. Remote endpoints
+and Docker Desktop integration do not satisfy this check. Correct overrides or
+select the intended context yourself.
+
+Verification does not pull images, run containers, start services or change contexts.
+
+## Recovery and tests
+
+Installation does not roll back repository files, signing keys or packages if a
+later step fails. Fix the reported issue and rerun.
+
+```bash
+./setup-docker/tests/test-linux
+./setup-docker/tests/test-macos
+./setup-docker/tests/test-verify
+```
+
+Tests use temporary homes and command doubles. Real installation and container
+execution need separate checks.

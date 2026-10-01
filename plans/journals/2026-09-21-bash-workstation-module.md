@@ -1,16 +1,17 @@
-# Bash workstation module
+# Bash workstation module — 2026-09-21
 
-Implemented the standalone module, generated templates, backups, preserved personal
-files, mise-managed tools, Flyline/Starship initialization and command hints.
+Completed the original standalone Bash module: installer, verifier, templates,
+backups, user-file preservation, mise tools, Flyline, Starship and command hints.
+The layout has since moved to the root-level setup modules.
 
-Validation used temporary homes and existing real tools. Syntax, repeated generation,
-PATH/hints, hook preservation/execution, Flyline builtin, completion, executable
-versions, Git/Python prompt rendering and negative verification passed. The prompt
-test needed to unset inherited STARSHIP_SHELL and set a terminal type explicitly.
+Temporary-home checks passed for syntax, repeated generation, PATH, hints, prompt
+hooks, completion, Flyline, executable versions and Git/Python prompt rendering.
+Negative verification detected broken configuration. Prompt tests required clearing
+inherited `STARSHIP_SHELL` and setting a terminal type.
 
-An isolated fresh-download attempt failed due to sandbox DNS. The user directed
-reuse of installed tools; no reinstall or real shell replacement was performed.
-Setup now installs only missing tools. Fresh-OS apt/download paths remain untested.
+A fresh-download attempt failed on sandbox DNS. The user requested reuse of
+installed tools, so fresh-OS APT/download installation remained untested.
+No real-home shell configuration was replaced.
 
-The journal CLI could not create its directory (read-only filesystem); this record
-was saved directly in the project. AgentWiki publication was skipped.
+This record was saved in the repo because the journal CLI could not write to its
+read-only directory. AgentWiki publication was skipped.

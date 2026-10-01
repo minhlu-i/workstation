@@ -1,15 +1,16 @@
-# Bash workstation audit fixes
+# Bash workstation audit fixes — 2026-09-21
 
-Setup now validates every existing Bash fragment before writing managed files.
-Startup records files whose source returns nonzero, and verification reports them
-without enabling errexit in interactive shells. Runtime tests check Python before
-setup and document it as a test prerequisite, not a module-installed tool.
+Added syntax checks for existing Bash fragments before managed writes. Startup
+records failed fragment sources, and verification reports them without enabling
+`errexit` in interactive shells.
 
-Both test suites passed, including invalid-fragment preservation, failed local and
-extra fragment sources, and recovery. An isolated PATH check confirmed missing
-Python fails before HOME mutation. All 21 Bash files passed syntax checks; TOML and
-local documentation links validated. Fresh apt/download provisioning and terminal
-UX remain untested. No real-home configuration was installed.
+Runtime tests now check Python before setup; Python is a test prerequisite.
+Both suites passed, covering invalid fragments, failed local/extra sources and
+recovery. A restricted-PATH check confirmed missing Python fails before home writes.
+All 21 Bash files passed syntax checks; TOML and local documentation links validated.
 
-The journal CLI returned a generic error, including with verbose diagnostics;
-this entry was written directly to the repository. AgentWiki publish skipped.
+Fresh APT/download installation and terminal UX remained untested. No real-home
+configuration was installed.
+
+The journal CLI failed, including with verbose diagnostics, so this record was
+saved in the repo. AgentWiki publication was skipped.
