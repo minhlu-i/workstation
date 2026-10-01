@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+workspace_test_dir=$(mktemp -d)
+trap 'rm -rf -- "$workspace_test_dir"' EXIT
+mkdir -p "$workspace_test_dir/bin" "$workspace_test_dir/archive/workstation-main/setup-git"
+export CALLS="$workspace_test_dir/calls" ARCHIVE="$workspace_test_dir/source.tar.gz"
+cat > "$workspace_test_dir/archive/workstation-main/setup.sh" <<'DOUBLE'
+#!/usr/bin/env bash
+printf 'setup %s\n' "$*" >> "$CALLS"
+IFS= read -r input || :
+printf 'stdin %s\n' "$input" >> "$CALLS"
+exit "${SETUP_STATUS:-0}"
+DOUBLE
+cat > "$workspace_test_dir/archive/workstation-main/setup-git/install-personal.sh" <<'DOUBLE'
+#!/usr/bin/env bash
+printf 'unexpected personalization\n' >> "$CALLS"
+exit 99
+DOUBLE
+tar -czf "$ARCHIVE" -C "$workspace_test_dir/archive" workstation-main
+cat > "$workspace_test_dir/bin/curl" <<'DOUBLE'
+#!/usr/bin/env bash
+printf 'download\n' >> "$CALLS"
+[[ ${DOWNLOAD_MODE-} != fail ]] || exit 22
+output=''
+while (( $# )); do
+    if [[ $1 == -o ]]; then output=$2; shift; fi
+    shift
+done
+if [[ ${DOWNLOAD_MODE-} == corrupt ]]; then printf 'not an archive' > "$output"; else cp "$ARCHIVE" "$output"; fi
+DOUBLE
+cat > "$workspace_test_dir/bin/git" <<'DOUBLE'
+#!/usr/bin/env bash
+printf 'unexpected git\n' >> "$CALLS"
+exit 99
+DOUBLE
+chmod +x "$workspace_test_dir/bin/"{curl,git}
+export PATH="$workspace_test_dir/bin:$PATH"
+new_case() {
+    export HOME="$workspace_test_dir/$1/home with spaces"
+    mkdir -p "$HOME"
+    : > "$CALLS"
+    unset DOWNLOAD_MODE SETUP_STATUS
+    destination="$HOME/.local/share/workstation"
+}
+expect_failure() {
+    local pattern=$1 status=0; shift
+    bash "$root/bootstrap.sh" "$@" > "$workspace_test_dir/log" 2>&1 || status=$?
+    [[ $status != 0 ]]
+    grep -q "$pattern" "$workspace_test_dir/log"
+}
+assert_staging_clean() {
+    local path
+    for path in "$HOME/.local/share/".workstation-download.*; do [[ ! -e $path ]]; done
+}
+new_case first-run
+printf 'terminal input\n' | bash "$root/bootstrap.sh" --shell zsh > "$workspace_test_dir/log"
+[[ -f $destination/setup.sh && -f $destination/.workstation-bootstrap && ! -e $destination/.git ]]
+[[ $(cat "$CALLS") == $'download\nsetup --shell zsh\nstdin terminal input' ]]
+grep -q 'Optional Git personalization' "$workspace_test_dir/log"
+assert_staging_clean
+# Updating a managed copy preserves local edits in a backup, including extra files.
+printf 'local data\n' > "$destination/custom-file"
+: > "$CALLS"
+bash "$root/bootstrap.sh" < /dev/null > "$workspace_test_dir/log"
+[[ ! -e $destination/custom-file ]]
+backups=("$HOME/.local/share/".workstation-backup.*)
+[[ ${#backups[@]} == 1 && $(cat "${backups[0]}/workstation/custom-file") == 'local data' ]]
+assert_staging_clean
+# Failed downloads/extraction must leave an existing managed copy untouched.
+printf 'preserve me\n' > "$destination/custom-file"
+for mode in fail corrupt; do
+    export DOWNLOAD_MODE=$mode
+    : > "$CALLS"
+    expect_failure 'existing installation was not changed'
+    [[ $(cat "$destination/custom-file") == 'preserve me' ]]
+    [[ $(cat "$CALLS") == download ]]
+    assert_staging_clean
+done
+new_case unmanaged
+mkdir -p "$destination"
+printf 'user data\n' > "$destination/custom-file"
+expect_failure 'unmanaged path'
+[[ ! -s $CALLS && $(cat "$destination/custom-file") == 'user data' ]]
+new_case invalid-marker
+mkdir -p "$destination"
+printf 'unrecognized\n' > "$destination/.workstation-bootstrap"
+expect_failure 'Unrecognized bootstrap ownership marker'
+[[ ! -s $CALLS ]]
+new_case missing-entry-point
+cp "$ARCHIVE" "$workspace_test_dir/valid.tar.gz"
+mv "$workspace_test_dir/archive/workstation-main/setup.sh" "$workspace_test_dir/setup.saved"
+tar -czf "$ARCHIVE" -C "$workspace_test_dir/archive" workstation-main
+expect_failure 'missing workstation entry points'
+[[ ! -e $destination && $(cat "$CALLS") == download ]]
+assert_staging_clean
+mv "$workspace_test_dir/setup.saved" "$workspace_test_dir/archive/workstation-main/setup.sh"
+mv "$workspace_test_dir/valid.tar.gz" "$ARCHIVE"
+new_case symlink
+mkdir -p "$HOME/.local/share" "$workspace_test_dir/user-data"
+ln -s "$workspace_test_dir/user-data" "$destination"
+expect_failure 'Refusing symlink'
+[[ ! -s $CALLS && -L $destination ]]
+new_case setup-failure
+export SETUP_STATUS=7
+status=0
+bash "$root/bootstrap.sh" < /dev/null > "$workspace_test_dir/log" 2>&1 || status=$?
+[[ $status == 7 && -f $destination/setup.sh ]]
+grep -q 'Source remains' "$workspace_test_dir/log"
+assert_staging_clean
+new_case invalid-option
+expect_failure 'Usage:' --invalid
+[[ ! -s $CALLS ]]
+bash "$root/bootstrap.sh" --help > "$workspace_test_dir/log"
+[[ ! -s $CALLS && ! -e $HOME/.local ]]
+printf 'PASS archive bootstrap: no Git, stdin/arguments, backups, failures and unmanaged-path protection\n'

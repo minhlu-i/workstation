@@ -15,15 +15,44 @@ TERM=xterm-256color ./doctor/check.sh
 
 ## First run
 
-1. Obtain this checkout, then run `./setup.sh`. The
+Run this in Bash or Zsh as your intended user, without sudo:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/minhlu-i/workstation/main/bootstrap.sh)
+```
+
+This needs existing Bash, curl and tar (plus standard filesystem utilities), but
+no Git, Homebrew or GitHub login. It downloads the public `main` archive to
+`~/.local/share/workstation` and runs basic setup with terminal input preserved.
+The bootstrap does not invoke Git personalization.
+
+1. The one-command bootstrap runs `setup.sh`. If you already have a checkout,
+   you can run `./setup.sh` directly instead. The
    [installer](setup.sh) runs tools (including missing Homebrew), shell, basic Git,
    Docker and doctor. Complete any CLT/OrbStack/WSL manual steps it reports, then rerun.
-2. Optionally run `./setup-git/install-personal.sh`. On a first interactive run,
+   For the archive installation, use the printed command or
+   `bash ~/.local/share/workstation/setup.sh` to continue without downloading again.
+2. Optionally run `bash ~/.local/share/workstation/setup-git/install-personal.sh`
+   (or `./setup-git/install-personal.sh` from your checkout). On a first interactive run,
    choose `new` or `bitwarden`; follow [Git personalization](setup-git/README.md)
    for key selection, identity and workspace defaults. This is a separate command.
 3. Follow its GitHub public-key/authentication hints, and use
    `./setup-git/verify-personal.sh` for local personal checks. Doctor continues to
    assess basic Git only; it does not certify GitHub access.
+
+Rerunning the one-command bootstrap downloads the latest `main`. It preserves the
+previous managed copy under `~/.local/share/.workstation-backup.*/workstation`,
+including any local edits, before replacing it. It refuses an existing unmanaged
+directory or symlink at its destination. Download/extraction failures leave the
+previous copy untouched; setup failures keep the new source for manual continuation.
+These archive copies have no `.git` directory: update them through bootstrap,
+rather than `git pull`. Backups remain until you remove them yourself.
+
+Optional shell selection uses the same setup arguments:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/minhlu-i/workstation/main/bootstrap.sh) --shell bash
+```
 
 Run as the intended user, not with sudo. Homebrew's initial installation may need
 sudo; native Docker installation on Ubuntu also uses sudo. Entry points work from any directory.
@@ -83,8 +112,8 @@ an interactive terminal or authenticate first with `sudo -v`.
 Homebrew's official installer runs as your user after sudo validation. Existing
 Homebrew/mise installations are reused; when brew already exists, this bootstrap
 path is skipped. No automatic package upgrades are requested; repair or upgrade a
-broken installed dependency explicitly. Obtain this checkout first (Git, archive,
-or copy); setup cannot supply Git before you have obtained the checkout.
+broken installed dependency explicitly. The archive bootstrap obtains the source
+without Git; direct checkout installation also remains supported.
 
 ## Domains
 
@@ -170,6 +199,7 @@ to be reachable by the current user. They never pull images or run containers;
 Tests use temporary homes:
 
 ```bash
+./tests/test-bootstrap                   # archive download/setup doubles; no host install
 ./setup-git/tests/test-basic             # basic setup; no vault/SSH calls
 ./setup-git/tests/test-new               # prompts and local ssh-keygen setup
 ./setup-git/tests/test-personal          # optional identities/local keys/sources

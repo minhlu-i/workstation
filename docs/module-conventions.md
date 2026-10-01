@@ -10,6 +10,14 @@ identifies the step. Doctor aggregates implemented verifiers and distinguishes
 planned domains. Keep dispatch explicit; no plugin registry or framework. Resolve
 paths relative to each entry point, independent of the caller's directory.
 
+Root bootstrap.sh owns downloading the public main archive without Git/login and
+running setup.sh from ~/.local/share/workstation. It requires existing Bash/curl/tar
+and standard filesystem utilities, preserves terminal input, forwards shell
+selection, and never invokes personalization. Download/extraction must complete
+before replacing a bootstrap-owned copy; preserve that copy as a backup and refuse
+unmanaged destinations/symlinks. A failed setup retains the downloaded source for
+manual continuation. Archive updates and checkout Git updates remain separate.
+
 Each dependency/configuration has one domain owner, independently of its installed
 provider. Check actual capability before installing; a working apt/system/brew/mise
 tool does not need a second installation just because the preferred manager does
