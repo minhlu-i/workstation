@@ -27,7 +27,7 @@ ssh-keygen -y -P '' -f "$HOME/.ssh/workstation/personal" > "$work/derived.pub"
 [[ $(ssh-keygen -lf "$work/derived.pub" | awk '{print $2}') == $(ssh-keygen -lf "$HOME/.ssh/workstation/personal.pub" | awk '{print $2}') ]]
 git init -q "$HOME/Workspace/personal/repo"
 [[ $(git -C "$HOME/Workspace/personal/repo" config user.email) == user@example.invalid ]]
-[[ $(git -C "$HOME/Workspace/personal/repo" ls-remote --get-url git@github.com:example-user/repo) == git@gh-personal:example-user/repo ]]
+[[ $(git -C "$HOME/Workspace/personal/repo" ls-remote --get-url git@github.com:example-user/repo) == git@github.com:example-user/repo ]]
 cp "$HOME/.ssh/workstation/personal" "$work/key-before"
 install new --username example-user --email user@example.invalid --no-input >/dev/null
 cmp "$work/key-before" "$HOME/.ssh/workstation/personal"
@@ -81,4 +81,4 @@ finally:
 PY
 [[ -f $MENU_HOME/.ssh/workstation/personal && ! -s $VAULT_CALLS ]]
 [[ $(jq -r .accounts.personal.name "$MENU_HOME/.config/git/workstation-profile.json") == menu-user ]]
-printf 'PASS new prompts, Ed25519 creation, identities/URL routing, key reuse, account addition and failure boundaries\n'
+printf 'PASS new prompts, Ed25519 creation, identities/workspace SSH, key reuse, account addition and failure boundaries\n'

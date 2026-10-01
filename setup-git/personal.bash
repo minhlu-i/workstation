@@ -31,7 +31,10 @@ check_file() {
     check_directory "$(dirname -- "$1")"
 }
 check_personal_paths() {
-    local profile=${1-} account path
+    local profile=${1-} account path shell
+    for shell in bash zsh; do
+        check_file "$HOME/.config/$shell/rc.d/40-git-workspace.$shell"
+    done
     for path in "$HOME/.gitconfig" "$HOME/.config/git/workstation-profile.json" "$HOME/.config/git/workstation.gitconfig"; do check_file "$path"; done
     check_directory "$HOME/.local/state/workstation/bash-workstation/backups"
     [[ -n $profile ]] || return 0
@@ -51,19 +54,17 @@ render_identity() {
     : > "$destination"
     git config --file "$destination" user.name "$(field "$profile" "$account" name)"
     git config --file "$destination" user.email "$(field "$profile" "$account" email)"
+    if [[ -n $(field "$profile" "$account" sshAlias) ]]; then
+        git config --file "$destination" core.sshCommand "$(workspace_ssh_command "$account")"
+    fi
 }
 render_git() {
-    local profile=$1 destination=$2 account workspace owner alias
+    local profile=$1 destination=$2 account workspace
     : > "$destination"
     git config --file "$destination" user.useConfigOnly true
     for account in $(accounts "$profile"); do
         workspace=$(field "$profile" "$account" workspace)
         git config --file "$destination" "includeIf.gitdir:$HOME/$workspace/.path" "$HOME/.config/git/workstation-identities/$account.gitconfig"
-        owner=$(field "$profile" "$account" githubOwner)
-        [[ -n $owner ]] || continue
-        alias=$(field "$profile" "$account" sshAlias)
-        git config --file "$destination" --add "url.git@$alias:$owner/.insteadOf" "git@github.com:$owner/"
-        git config --file "$destination" --add "url.git@$alias:$owner/.insteadOf" "ssh://git@github.com/$owner/"
     done
 }
 render_ssh() {
@@ -120,4 +121,20 @@ stage_local_keys() {
         fi
         validate_key_pair "$work/$account" "$work/$account.pub"
     done
+}
+
+# Quote literal paths for the POSIX shell used by Git's SSH transport.
+workspace_ssh_command() {
+    local key="$HOME/.ssh/workstation/$1"
+    key=${key//\'/\'\\\'\'}
+    printf "ssh -i '%s' -o IdentitiesOnly=yes -o IdentityAgent=none" "$key"
+}
+render_workspace_shell() {
+    local profile=$1 destination=$2 account workspace
+    cat "$module/files/workspace-shell.header" > "$destination"
+    for account in $(ssh_accounts "$profile"); do
+        workspace=$(field "$profile" "$account" workspace)
+        printf '        %q*) workstation_ssh=%q ;;\n' "$HOME/$workspace/" "$(workspace_ssh_command "$account")" >> "$destination"
+    done
+    cat "$module/files/workspace-shell.footer" >> "$destination"
 }

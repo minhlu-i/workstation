@@ -1,0 +1,33 @@
+# Managed by setup-git. Select a local SSH key by workspace, including git clone.
+git() {
+    local workstation_directory="$PWD" workstation_ssh=''
+    # Respect an explicit transport override supplied by the caller.
+    if [ "${GIT_SSH_COMMAND+x}" = x ] || [ "${GIT_SSH+x}" = x ]; then
+        command git "$@"
+        return $?
+    fi
+    # Resolve Git's leading -C options without changing the caller's directory.
+    local -a workstation_arguments
+    workstation_arguments=("$@")
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -C)
+                [ "$#" -ge 2 ] || break
+                if [ -n "$2" ]; then
+                    workstation_directory=$(cd -- "$workstation_directory" && cd -- "$2" && pwd) || return $?
+                fi
+                shift 2 ;;
+            -C?*)
+                workstation_directory=$(cd -- "$workstation_directory" && cd -- "${1#-C}" && pwd) || return $?
+                shift ;;
+            -c|--config-env|--namespace)
+                [ "$#" -ge 2 ] || break
+                shift 2 ;;
+            --git-dir|--work-tree|--git-dir=*|--work-tree=*)
+                command git "${workstation_arguments[@]}"
+                return $? ;;
+            -*) shift ;;
+            *) break ;;
+        esac
+    done
+    case "$workstation_directory/" in

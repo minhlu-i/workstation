@@ -54,7 +54,8 @@ you can enter a different display name. Saved author names/workspaces remain the
 defaults when reconfiguring an account. It runs ssh-keygen to generate an Ed25519
 key with your email as its comment.
 The key has no passphrase, matching the password-free local-key workflow.
-Username also selects the GitHub owner whose SSH URLs are rewritten to the alias.
+Username is saved as GitHub account metadata; SSH keys are selected by workspace,
+independently of the repository owner or organization.
 
 Defaults are account personal, workspace ~/Workspace/personal, alias gh-personal
 and key ~/.ssh/workstation/personal. Configuration is saved automatically. Register
@@ -78,8 +79,8 @@ while retaining existing accounts, and still enter username/email interactively:
 ```
 
 --git-name supplies a separate commit author name, including with --no-input.
---github-owner can override SSH URL routing for an organization or another owner;
-the Git author name does not determine this routing.
+--github-owner supplies saved GitHub metadata for compatibility; it does not route
+URLs. The Git author name does not determine SSH key selection.
 After setup, no-mode reruns reuse saved configuration/key pairs offline. Without
 saved data and without a terminal, explicitly select new or bitwarden; --no-input
 fails if new is missing username/email or the vault needs login/unlock.
@@ -157,9 +158,37 @@ Original files are not modified. These local-source imports never invoke bw.
 
 SSH aliases default to gh-<account-id>; alias and githubOwner values must be unique.
 The account ID config is reserved when SSH is enabled, to avoid its managed file.
-SSH currently targets github.com as user git. githubOwner is optional: when present,
-Git rewrites that owner's standard GitHub SSH URLs through the alias. Without it,
-use git@<ssh-alias>:OWNER/REPO directly. HTTPS URLs stay HTTPS.
+SSH aliases target github.com as user git. githubOwner is optional metadata;
+managed configuration no longer rewrites URLs by owner. Standard SSH URLs such as
+`git@github.com:99techteam/REPO.git` keep their original host and owner. HTTPS URLs
+stay HTTPS and use their own credential handling.
+
+Each SSH-enabled workspace identity includes `core.sshCommand` pointing to its
+local key with agents disabled. This also applies to Git invoked by an IDE inside
+a repo, unless the IDE supplies its own transport. Before a repo exists, managed
+Bash/Zsh fragments at `~/.config/<shell>/rc.d/40-git-workspace.<shell>` select the
+key by the working directory, including leading/repeated `git -C` options. Open a
+new managed terminal after personalization, or source the matching fragment. With
+a different shell startup, source it explicitly. Setup preserves user-owned local
+and alias files. The wrapper preserves explicit `GIT_SSH_COMMAND` or `GIT_SSH` values; Git then
+applies its normal transport precedence.
+
+```bash
+cd ~/Workspace/s5tech
+git clone git@github.com:99techteam/REPO.git
+```
+
+Clone into the workspace you are currently using (or select it with `git -C`);
+cloning from outside into a workspace destination does not select that destination's
+key. Outside configured workspaces, the wrapper delegates to Git unchanged. Explicit
+SSH aliases remain available. Use standard github.com URLs for workspace selection;
+an alias for a different account can add that account's key through SSH config.
+
+Reruns replace the old managed owner-rewrite rules and regenerate both shell
+fragments, deactivating removed accounts. Existing unrelated URL rules, repo-local
+settings and user-defined Git functions remain user-owned; a function in local.bash
+or local.zsh loads later and can override the managed wrapper. Remove a previous
+manual workspace Git function there when adopting this installer.
 
 Managed aliases use IdentityAgent none and IdentitiesOnly yes. Keys must be valid
 and unencrypted for password-free daily use; encrypted keys fail, and setup never
@@ -182,8 +211,8 @@ no extra CLI dependency and pages long lists. Cancellation deploys nothing.
 
 For each selected key, enter GitHub username, Git email, Git author name and a
 HOME-relative workspace. A new author name defaults to the username; it may differ
-from the GitHub account. GitHub username determines SSH URL routing; author name
-is used in commits. Workspace defaults to Workspace/<key-name-slug>; you can accept the
+from the GitHub account. The workspace selects the SSH key; GitHub username is
+saved metadata and author name is used in commits. Workspace defaults to Workspace/<key-name-slug>; you can accept the
 suggestion with Enter. Re-selecting a saved item offers its existing GitHub owner,
 author name, email and workspace independently.
 Username/email cannot be reliably inferred from a key, so first selection requires

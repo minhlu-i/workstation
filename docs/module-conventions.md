@@ -49,7 +49,10 @@ not own it. Do not uninstall, take over or silently upgrade existing tools.
   new/bitwarden choices. Bitwarden lists SSH-key metadata in a native multi-select
   checkbox menu, then collects GitHub usernames, emails, separate author names and
   workspaces, and creates selected folders. Preserve saved defaults independently;
-  author names must not determine GitHub URL routing.
+  SSH transport selects keys by workspace, never by repository owner or author name.
+  Per-workspace core.sshCommand covers existing repositories; setup-git owns
+  40-git-workspace fragments in both shell rc.d directories for pre-clone selection.
+  Preserve user-owned local/alias files and explicit transport overrides.
   Store item IDs to resolve duplicate names; cached refresh needs no chooser/note.
   Explicit Secure Note import remains compatible. No-source reruns stay offline;
   no implicit vault login. Version-1 profiles remain compatible. Identity-only
