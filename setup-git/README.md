@@ -295,6 +295,5 @@ identity/key/config preservation, removal, passphrase/pair validation, permissio
 rotation and session cleanup. They do not authenticate to real vaults/GitHub or
 prove clean-machine installation.
 
-The source tree contains no actual personal identities/public keys, but historical
-commits still do. Before making the repo public, separately clean history or publish
-a sanitized snapshot with new history. Setup never changes repository visibility.
+Keep personal identities and SSH keys outside the repository, including its Git
+history. Setup never changes repository visibility.
