@@ -22,6 +22,11 @@ printf 'SKIP (not requested): Git personalization; identity and SSH authenticati
 printf 'PLANNED (not checked): setup-workspace\n'
 if (( failures )); then
     printf 'Implemented-domain checks failed: %s\n' "$failures" >&2
-    exit 1
+    status=1
+else
+    printf 'Tools, shell, basic Git and Docker checks passed. Full workstation readiness is not assessed.\n'
+    status=0
 fi
-printf 'Tools, shell, basic Git and Docker checks passed. Full workstation readiness is not assessed.\n'
+printf '\nOptional next step: Git personalization (choose new / bitwarden).\n'
+printf '  bash %q\n' "$root/setup-git/install-personal.sh"
+exit "$status"

@@ -32,6 +32,7 @@ The bootstrap does not invoke Git personalization.
    Docker and doctor. Complete any CLT/OrbStack/WSL manual steps it reports, then rerun.
    For the archive installation, use the printed command or
    `bash ~/.local/share/workstation/setup.sh` to continue without downloading again.
+   Doctor ends with the optional Git personalization command, including on reruns.
 2. Optionally run `bash ~/.local/share/workstation/setup-git/install-personal.sh`
    (or `./setup-git/install-personal.sh` from your checkout). On a first interactive run,
    choose `new` or `bitwarden`; follow [Git personalization](setup-git/README.md)

@@ -27,6 +27,9 @@ expected=$'setup-tools/install.sh \nsetup-shell/install.sh \nsetup-git/install.s
 grep -q 'Full workstation readiness is not assessed' "$workspace_test_dir/log"
 grep -Fxq 'PLANNED (not checked): setup-workspace' "$workspace_test_dir/log"
 grep -Fxq 'SKIP (not requested): Git personalization; identity and SSH authentication not checked' "$workspace_test_dir/log"
+grep -Fxq 'Optional next step: Git personalization (choose new / bitwarden).' "$workspace_test_dir/log"
+printf -v personal_hint '  bash %q' "$fixture/setup-git/install-personal.sh"
+[[ $(tail -1 "$workspace_test_dir/log") == "$personal_hint" ]]
 : > "$CALLS"
 "$fixture/setup-bash-workstation" > /dev/null
 legacy_expected=$'setup-tools/install.sh \nsetup-shell/install.sh --shell bash\nsetup-git/install.sh \nsetup-docker/install.sh \nsetup-tools/verify.sh \nsetup-shell/verify.sh --shell bash\nsetup-git/verify.sh \nsetup-docker/verify.sh '
@@ -47,6 +50,7 @@ for step in setup-tools/verify.sh setup-shell/verify.sh setup-git/verify.sh setu
     [[ $status == 1 ]]
     (( $(wc -l < "$CALLS") == 4 ))
     grep -q PLANNED "$workspace_test_dir/log"
+    [[ $(tail -1 "$workspace_test_dir/log") == "$personal_hint" ]]
 done
 # Exercise the real basic Git entry points inside otherwise mocked orchestration.
 # This proves the default root command/doctor work without a vault or SSH setup.
