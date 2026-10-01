@@ -28,13 +28,17 @@ not own it. Do not uninstall, take over or silently upgrade existing tools.
   setup-shell.toml for shell tools under ~/.config/mise/conf.d/. Manifests contain
   the approved subset needing mise; working external tools are omitted. The
   latest/missing-only policy remains for mise-managed entries.
-- setup-git owns fixed Workspace identities, Git preferences and GitHub SSH aliases
-  with local private/public key pairs restored through Bitwarden CLI. Git metadata
-  comes from a Secure Note; key material comes from SSH key items. Private files
-  use mode 600 and SSH directories mode 700; disable agents for managed aliases.
-  Stage/validate imports before deployment, lock setup-owned sessions and never
-  log key JSON or remove passphrases. Offline reruns reuse the local profile/keys.
-  No Git version pin or global ignore. Rotation backups contain private keys.
+- setup-git defaults to basic Git checks and init.defaultBranch=main only when
+  no global default exists. Reuse existing preferences; never create/update
+  identity, SSH or vault files in this path. Basic checks need Git only and doctor
+  reports personalization as SKIP. Git installation remains owned by setup-tools.
+  The saved install-personal.sh/verify-personal.sh entry points preserve the prior
+  two-workspace implementation for a future generic personalization phase. They
+  restore Git metadata from a Secure Note and local key pairs from SSH key items.
+  Private files use mode 600 and SSH directories mode 700; managed aliases disable
+  agents. Stage/validate imports, lock setup-owned sessions and never log key JSON
+  or remove passphrases. Rotation backups contain private keys. Default orchestration
+  must not invoke these personal entry points.
 - setup-docker owns OrbStack on macOS and native Engine on Ubuntu/WSL2, plus CLI,
   Compose and Buildx. OrbStack's cask supplies macOS tools; Linux uses official
   Docker APT packages, an exception to common-tool brew/mise ownership. Reuse

@@ -1,15 +1,53 @@
 # Setup Git
 
-Configures personal/s5tech workspace identities and GitHub SSH aliases from
-Bitwarden Password Manager CLI (`bw`). Git, jq and bw belong to setup-tools.
-Bitwarden Desktop and SSH agents are not required. Private keys are restored to
-local files; no key or personal identity is shipped in this checkout.
+Default Git setup is generic: check the existing Git installed by setup-tools,
+then set `init.defaultBranch=main` only when no global default branch is configured.
+An existing valid default branch is reused. No account or identity is required.
 
 ```bash
-./setup-git/install.sh                   # restore once; reuse local data on rerun
-./setup-git/install.sh --refresh         # sync and import current vault data again
-./setup-git/install.sh --configure-only  # offline; requires local profile/key pairs
-./setup-git/verify.sh                    # local configuration, permissions and keys
+./setup-git/install.sh
+./setup-git/install.sh --configure-only
+./setup-git/verify.sh
+```
+
+Both install modes perform the same offline basic configuration; neither installs
+packages. Git must already work. Verification checks Git, global configuration and
+its default branch, without network authentication or installing/repairing files.
+The old `--config-only` verification flag remains compatible.
+
+Basic setup preserves existing names/emails, user.useConfigOnly, conditional
+workspace identities, URL rewrites, credential helpers, SSH aliases, key files,
+permissions and Bitwarden configuration. It does not create Workspace directories,
+SSH files, personal profiles or managed personalization includes. It never calls
+bw, jq, ssh or ssh-keygen. Existing invalid global Git syntax/default branch is a
+failure, not an excuse to overwrite configuration. A symlinked root config is
+reused when it already has a valid branch; if a write is needed it requires manual
+handling. Non-default XDG/Git config overrides retain the repo's current restrictions.
+
+Changed ~/.gitconfig is backed up under the shared
+`~/.local/state/workstation/bash-workstation/backups/` path, preserving its original
+file mode. A newly created config has mode 600. Reruns make no changes or backups
+when the branch is already configured. Root setup and doctor run only this basic
+entry point. Doctor reports personalization as SKIP and does not certify identity
+or SSH readiness, even when existing personal data is present.
+
+Run `./setup-git/tests/test-basic` for isolated fresh/existing HOME, no-vault/SSH
+calls, preservation, backup, rerun and failure checks. Python 3 is used only for
+file/permission snapshots in this test.
+
+## Saved personal workflow
+
+The previous vault/local-key implementation is preserved in separate entry points
+for the next personalization phase. It still uses exactly personal/s5tech accounts;
+its generic optional-profile interface has not been implemented. Default setup and
+doctor do not invoke it. Only run these commands when explicitly restoring personal
+data:
+
+```bash
+./setup-git/install-personal.sh                   # restore/reuse personal data
+./setup-git/install-personal.sh --refresh         # import vault updates
+./setup-git/install-personal.sh --configure-only  # reuse local profile/key pairs
+./setup-git/verify-personal.sh                    # check identity and local keys
 ```
 
 ## Prepare the vault once

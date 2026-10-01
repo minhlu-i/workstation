@@ -41,8 +41,9 @@ Project runtimes (Node/Python/Go, etc.) remain in each project's `mise.toml`.
 Common CLI include Bitwarden CLI (`bw`), Codex (`codex`) and Claude Code (`claude`)
 on all supported platforms, including WSL2. Setup reuses existing installations or
 installs missing ones with mise. Sign in to Codex/Claude manually afterward; their
-account/configuration sync is not managed. Git setup prompts through bw when it
-needs to restore personal configuration and SSH keys from the vault.
+account/configuration sync is not managed. Default Git setup does not configure
+accounts or contact the vault. Explicit personal restoration is described in
+[setup-git](setup-git/README.md).
 
 Zed uses the macOS Homebrew cask or its official installer on native Ubuntu;
 WSL skips Zed. Restore editor settings from your online configuration manually.
@@ -78,7 +79,7 @@ or copy); setup cannot supply Git before you have obtained the checkout.
 |---|---|
 | [setup-tools](setup-tools/README.md) | Implemented: Homebrew bootstrap, mise, base commands, common CLI and Zed |
 | [setup-shell](setup-shell/README.md) | Implemented: native shell, shell plugins, shared Starship/zoxide, modular startup |
-| [setup-git](setup-git/README.md) | Implemented: vault-sourced workspace identities and local SSH key configuration |
+| [setup-git](setup-git/README.md) | Implemented: basic Git checks/default branch; personal workflow is separate |
 | [setup-docker](setup-docker/README.md) | Implemented: OrbStack / native Docker Engine, CLI, Compose and Buildx |
 | [setup-workspace](setup-workspace/README.md) | Planned: workspace organization |
 
@@ -144,9 +145,10 @@ planned domains separately and returns nonzero on mandatory failure. It does not
 install or repair configuration. Shell verification executes interactive startup,
 including personal fragments, and may create normal history/completion caches.
 
-Git setup restores identity and unencrypted local SSH key pairs through Bitwarden CLI
-(`bw`); subsequent Git usage and doctor do not require a vault session or SSH agent.
-Prepare the Secure Note and key items described in [setup-git](setup-git/README.md).
+Default Git setup and doctor check only Git and its default branch. Identity and
+SSH are not assessed; doctor explicitly reports personalization as SKIP. Existing
+personal configuration is preserved. The saved explicit personal restoration
+workflow is described in [setup-git](setup-git/README.md).
 Docker runtime checks require the selected local OrbStack/native Engine socket
 to be reachable by the current user. They never pull images or run containers;
 `./setup-docker/verify.sh --tools-only` checks installed tools without probing it.
@@ -154,7 +156,8 @@ to be reachable by the current user. They never pull images or run containers;
 Tests use temporary homes:
 
 ```bash
-./setup-git/tests/test-configure
+./setup-git/tests/test-basic             # basic setup; no vault/SSH calls
+./setup-git/tests/test-configure         # saved personal workflow
 ./setup-git/tests/test-bitwarden         # generated keys and bw double
 ./setup-tools/tests/test-providers
 ./setup-tools/tests/test-bootstrap       # OS/sudo/installer doubles
