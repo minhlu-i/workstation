@@ -13,7 +13,7 @@ source "$root/setup-tools/file-operations.bash"
 source "$root/setup-tools/dependencies.bash"
 # Every common CLI has an explicitly supplied external provider, independent of
 # packages installed on the host running this test.
-for command in bat claude codex delta eza fd jq rg tldr yq; do
+for command in bat bw claude codex delta eza fd jq rg tldr yq; do
     printf '#!/bin/sh\nexit 0\n' > "$HOME/bin/$command"
     chmod +x "$HOME/bin/$command"
 done
@@ -39,6 +39,8 @@ grep -Fxq '"yq" = "latest"' "$HOME/yq-manifest.toml"
 cp "$HOME/working-yq" "$HOME/bin/yq"
 configure_mise_tools "$root/setup-tools/files/mise.toml" "$HOME/manifest.toml" manifest.toml --configure-only
 [[ $(cat "$HOME/manifest.toml") == '[tools]' ]]
+[[ $(tool_command bitwarden) == bw ]]
+! grep -Fq '"bitwarden"' "$HOME/manifest.toml"
 [[ ! -e $HOME/manager-calls ]]
 verify_mise_tools "$root/setup-tools/files/mise.toml" "$HOME/manifest.toml"
 [[ ! -e $HOME/manager-calls ]]
@@ -98,6 +100,16 @@ esac
 MISE
 printf '#!/bin/sh\nexit 0\n' > "$HOME/bin/mise-bat"
 chmod +x "$HOME/bin/mise-bat"
+# A missing bw binary keeps the Bitwarden declaration, and managed verification
+# resolves that declaration back to the bw executable supplied by mise.
+printf '[tools]\n"bitwarden" = "latest"\n' > "$HOME/bitwarden-template.toml"
+printf '#!/bin/sh\nexit 1\n' > "$HOME/bin/bw"
+configure_mise_tools "$HOME/bitwarden-template.toml" "$HOME/bitwarden-manifest.toml" bitwarden-manifest.toml --configure-only
+grep -Fxq '"bitwarden" = "latest"' "$HOME/bitwarden-manifest.toml"
+printf '#!/bin/sh\nexit 0\n' > "$HOME/bin/mise-bw"
+chmod +x "$HOME/bin/mise-bw"
+verify_mise_tools "$HOME/bitwarden-template.toml" "$HOME/bitwarden-manifest.toml"
+printf '#!/bin/sh\nexit 0\n' > "$HOME/bin/bw"
 configure_mise_tools "$root/setup-tools/files/mise.toml" "$HOME/manifest.toml" manifest.toml ''
 grep -Fxq 'mise install bat' "$HOME/manager-calls"
 verify_mise_tools "$root/setup-tools/files/mise.toml" "$HOME/manifest.toml"

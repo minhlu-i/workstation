@@ -1,5 +1,6 @@
 [tools]
 "bat" = "latest"
+"bitwarden" = "latest"
 "claude" = "latest"
 "codex" = "latest"
 "delta" = "latest"
